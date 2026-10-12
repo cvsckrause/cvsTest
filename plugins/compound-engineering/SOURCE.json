@@ -1,0 +1,9 @@
+{
+  "name": "compound-engineering",
+  "version": "3.30.5",
+  "tag": "compound-engineering-v3.30.5",
+  "commit": "50532b00de523980010d97fe950965b35382a3b7",
+  "repository": "https://github.com/EveryInc/compound-engineering-plugin",
+  "license": "MIT",
+  "installedSkills": ".cursor/skills"
+}
