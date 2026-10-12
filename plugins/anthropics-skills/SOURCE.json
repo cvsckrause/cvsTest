@@ -2,6 +2,7 @@
   "name": "anthropics-skills",
   "version": "1.0.0",
   "source": "https://github.com/anthropics/skills",
-  "installedSkills": "plugins/anthropics-skills/skills",
-  "note": "Skill files live in this plugin's skills directory. .agents/skills is a symlink here so Cursor still discovers them as project skills."
+  "installedSkills": ".cursor/skills",
+  "pluginSkills": "plugins/anthropics-skills/skills",
+  "note": "The plugin copy stays in plugins/anthropics-skills/skills. The same skills are also installed as project skills under .cursor/skills."
 }
