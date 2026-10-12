@@ -1,0 +1,5 @@
+{
+  "name": "cvstest",
+  "install": "npm ci --prefix tools/docs-preview --omit=dev\nchmod +x tools/docs-preview/validate-docs.mjs\nsudo ln -sfn \"$(pwd)/tools/docs-preview/validate-docs.mjs\" /usr/local/bin/validate-erp-docs",
+  "start": "if curl -fsS http://127.0.0.1:4173/health >/dev/null 2>&1; then\n  echo \"ERP docs preview already listening on port 4173\"\n  exit 0\nfi\nexec node tools/docs-preview/preview-server.mjs"
+}
