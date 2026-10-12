@@ -1,7 +1,13 @@
 {
   "plugins": {
-    "compound-engineering@cursor-public": {
+    "cursor-public/compound-engineering": {
       "enabled": true
+    },
+    "cvstest/anthropics-skills": {
+      "enabled": true,
+      "gitUrl": "https://github.com/cvsckrause/cvsTest.git",
+      "gitRef": "main",
+      "gitPath": "plugins/anthropics-skills"
     }
   }
 }
