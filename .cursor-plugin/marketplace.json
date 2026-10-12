@@ -4,20 +4,19 @@
     "name": "cvsckrause"
   },
   "metadata": {
-    "description": "Compound Engineering and Anthropic agent skills for this repository.",
-    "pluginRoot": "plugins"
+    "description": "Compound Engineering and Anthropic agent skills for this repository."
   },
   "plugins": [
     {
       "name": "compound-engineering",
-      "source": "compound-engineering",
+      "source": "plugins/compound-engineering",
       "description": "Brainstorm, plan, debug, review, and compound learnings with AI agents.",
       "version": "3.30.5"
     },
     {
-      "name": "anthropic-skills",
-      "source": "anthropic-skills",
-      "description": "Anthropic agent skills for documents, design, and frontend work.",
+      "name": "anthropics-skills",
+      "source": "plugins/anthropics-skills",
+      "description": "Official Anthropic agent skills (pdf, docx, frontend-design, and more).",
       "version": "1.0.0"
     }
   ]

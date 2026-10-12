@@ -1,8 +1,18 @@
-﻿{
+{
   "name": "anthropics-skills",
   "displayName": "Anthropic Skills",
   "version": "1.0.0",
   "description": "Official Anthropic agent skills (pdf, docx, frontend-design, and more)",
-  "author": { "name": "Anthropic" },
-  "repository": "https://github.com/anthropics/skills"
+  "author": {
+    "name": "Anthropic"
+  },
+  "repository": "https://github.com/anthropics/skills",
+  "license": "See each skill LICENSE.txt",
+  "keywords": [
+    "skills",
+    "documents",
+    "design",
+    "frontend"
+  ],
+  "skills": "./skills"
 }
