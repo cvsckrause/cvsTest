@@ -1,3 +1,17 @@
 node_modules/
 tools/docs-preview/dist/
 .context/compound-engineering/
+
+# .NET
+**/bin/
+**/obj/
+
+# Frontend build output
+dist/
+coverage/
+
+# Local configuration and generated infrastructure output
+.env
+.env.*
+!.env.example
+cdk.out/
