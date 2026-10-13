@@ -213,5 +213,7 @@ const server = http.createServer((request, response) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`ERP docs preview listening on http://${host}:${port}`);
+  // 0.0.0.0 / :: are bind addresses, not browseable URLs in Chrome.
+  const displayHost = host === "0.0.0.0" || host === "::" ? "localhost" : host;
+  console.log(`ERP docs preview listening on http://${displayHost}:${port}`);
 });

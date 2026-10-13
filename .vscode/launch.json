@@ -8,10 +8,14 @@
       "program": "${workspaceFolder}/tools/docs-preview/preview-server.mjs",
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
+      "env": {
+        "HOST": "127.0.0.1",
+        "PORT": "4173"
+      },
       "serverReadyAction": {
-        "pattern": "ERP docs preview listening on http://[^:]+:([0-9]+)",
-        "uriFormat": "http://localhost:%s",
-        "action": "debugWithChrome",
+        "pattern": "ERP docs preview listening on (https?://\\S+)",
+        "uriFormat": "%s",
+        "action": "openExternally",
         "killOnServerStop": true
       }
     },
@@ -21,7 +25,11 @@
       "name": "Docs Preview Server only",
       "program": "${workspaceFolder}/tools/docs-preview/preview-server.mjs",
       "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal"
+      "console": "integratedTerminal",
+      "env": {
+        "HOST": "127.0.0.1",
+        "PORT": "4173"
+      }
     }
   ]
 }
