@@ -2,12 +2,18 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "type": "chrome",
+      "type": "node",
       "request": "launch",
       "name": "ERP Docs Preview",
-      "url": "http://localhost:4173",
-      "webRoot": "${workspaceFolder}",
-      "preLaunchTask": "docs-preview: serve"
+      "program": "${workspaceFolder}/tools/docs-preview/preview-server.mjs",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "serverReadyAction": {
+        "pattern": "ERP docs preview listening on http://[^:]+:([0-9]+)",
+        "uriFormat": "http://localhost:%s",
+        "action": "debugWithChrome",
+        "killOnServerStop": true
+      }
     },
     {
       "type": "node",
