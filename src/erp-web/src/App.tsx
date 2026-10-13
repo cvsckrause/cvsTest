@@ -5,6 +5,7 @@ import { erpApi } from './api'
 import type { Article, Customer, OrderLine, SalesOrder } from './api'
 
 const initialOrderNumber = 'SO-2026-0001'
+type WorkflowStep = 'capture' | 'release' | 'deliver' | 'invoice'
 
 function App() {
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -15,6 +16,7 @@ function App() {
   const [orderNumber, setOrderNumber] = useState(initialOrderNumber)
   const [lines, setLines] = useState<OrderLine[]>([])
   const [order, setOrder] = useState<SalesOrder | null>(null)
+  const [step, setStep] = useState<WorkflowStep>('capture')
   const [notice, setNotice] = useState('Stammdaten werden geladen …')
   const [busy, setBusy] = useState(false)
 
@@ -52,16 +54,29 @@ function App() {
     setQuantity(1)
   }
 
+  function goTo(next: WorkflowStep) {
+    if (next === 'release' && !order) {
+      setNotice('Zuerst unten „Position hinzufügen“, dann rechts „Auftrag speichern“. Danach kannst du freigeben.')
+      return
+    }
+    if ((next === 'deliver' || next === 'invoice') && order?.status !== 'Released') {
+      setNotice('Zuerst den Auftrag speichern und freigeben. Lieferung und Rechnung kommen danach automatisch.')
+      return
+    }
+    setStep(next)
+  }
+
   async function saveOrder() {
     if (!customerId || lines.length === 0) {
-      setNotice('Kunde und mindestens eine Position sind erforderlich.')
+      setNotice('Kunde und mindestens eine Position sind erforderlich. Klicke „Position hinzufügen“.')
       return
     }
     setBusy(true)
     try {
       const saved = await erpApi.createOrder(customerId, orderNumber, lines)
       setOrder(saved)
-      setNotice(`Auftrag ${saved.orderNumber} gespeichert.`)
+      setStep('release')
+      setNotice(`Auftrag ${saved.orderNumber} gespeichert. Als Nächstes: „Auftrag freigeben“.`)
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Auftrag konnte nicht gespeichert werden.')
     } finally {
@@ -70,17 +85,29 @@ function App() {
   }
 
   async function releaseOrder() {
-    if (!order) return
+    if (!order) {
+      goTo('release')
+      return
+    }
     setBusy(true)
     try {
       const released = await erpApi.releaseOrder(order.id)
       setOrder(released)
-      setNotice(`Auftrag ${released.orderNumber} freigegeben und Bestand reserviert.`)
+      setStep('deliver')
+      setNotice(`Auftrag ${released.orderNumber} freigegeben. Lieferung und Rechnung erzeugt der Worker im Hintergrund.`)
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Freigabe fehlgeschlagen.')
     } finally {
       setBusy(false)
     }
+  }
+
+  function startNewOrder() {
+    setOrder(null)
+    setLines([])
+    setStep('capture')
+    setOrderNumber((current) => current.replace(/(\d+)$/, (digits) => String(Number(digits) + 1).padStart(digits.length, '0')))
+    setNotice('Neuer Auftrag. Position hinzufügen, speichern, dann freigeben.')
   }
 
   return (
@@ -89,9 +116,9 @@ function App() {
         <div className="product-mark" aria-label="Northstar ERP">N</div>
         <nav aria-label="Hauptnavigation">
           <button className="nav-item active" title="Vertrieb"><span>V</span>Vertrieb</button>
-          <button className="nav-item" title="Stammdaten"><span>S</span>Stamm</button>
-          <button className="nav-item" title="Lager"><span>L</span>Lager</button>
-          <button className="nav-item" title="Auswertungen"><span>A</span>Analyse</button>
+          <button className="nav-item" title="Stammdaten" onClick={() => setNotice('Stammdaten sind in dieser Scheibe nur Kunde und Artikel in der Auftragserfassung.')}><span>S</span>Stamm</button>
+          <button className="nav-item" title="Lager" onClick={() => setNotice('Lagerbuchungen laufen über die Freigabe. Eine eigene Lager-Maske gibt es in dieser Scheibe nicht.')}><span>L</span>Lager</button>
+          <button className="nav-item" title="Auswertungen" onClick={() => setNotice('Auswertungen sind in dieser Scheibe nicht enthalten.')}><span>A</span>Analyse</button>
         </nav>
         <div className="rail-footer">CK</div>
       </aside>
@@ -106,10 +133,10 @@ function App() {
         </header>
 
         <div className="workflow" aria-label="Auftragsfortschritt">
-          <div className="workflow-step current"><span>1</span>Erfassen</div>
-          <div className={order?.status === 'Released' ? 'workflow-step done' : 'workflow-step'}><span>2</span>Freigeben</div>
-          <div className="workflow-step"><span>3</span>Liefern</div>
-          <div className="workflow-step"><span>4</span>Rechnen</div>
+          <button type="button" className={stepClass('capture', step, order)} onClick={() => goTo('capture')}><span>1</span>Erfassen</button>
+          <button type="button" className={stepClass('release', step, order)} onClick={() => goTo('release')}><span>2</span>Freigeben</button>
+          <button type="button" className={stepClass('deliver', step, order)} onClick={() => goTo('deliver')}><span>3</span>Liefern</button>
+          <button type="button" className={stepClass('invoice', step, order)} onClick={() => goTo('invoice')}><span>4</span>Rechnen</button>
         </div>
 
         <section className="workspace">
@@ -181,9 +208,18 @@ function App() {
               <div className="total"><dt>Nettobetrag</dt><dd>{euro(order?.netAmount ?? netAmount)}</dd></div>
             </dl>
             <div className="summary-actions">
-              {!order && <button className="primary" onClick={saveOrder} disabled={busy}>Auftrag speichern</button>}
-              {order && order.status !== 'Released' && <button className="primary" onClick={releaseOrder} disabled={busy}>Auftrag freigeben</button>}
-              {order?.status === 'Released' && <p className="released-note">Bestand reserviert. Lieferung und Rechnung werden im Hintergrund erzeugt.</p>}
+              {step === 'capture' && !order && <button className="primary" onClick={saveOrder} disabled={busy}>Auftrag speichern</button>}
+              {(step === 'release' || (order && order.status !== 'Released')) && order?.status !== 'Released' && (
+                <button className="primary" onClick={releaseOrder} disabled={busy || !order}>
+                  {order ? 'Auftrag freigeben' : 'Zuerst speichern'}
+                </button>
+              )}
+              {order?.status === 'Released' && (
+                <>
+                  <p className="released-note">Bestand reserviert. Lieferung und Rechnung erzeugt der Worker im Hintergrund — in dieser Scheibe gibt es keine weiteren Masken.</p>
+                  <button className="secondary" type="button" onClick={startNewOrder}>Neuen Auftrag erfassen</button>
+                </>
+              )}
             </div>
             <div className="shortcuts">
               <p>Tastatur</p>
@@ -200,6 +236,16 @@ function App() {
       </main>
     </div>
   )
+}
+
+function stepClass(id: WorkflowStep, current: WorkflowStep, order: SalesOrder | null) {
+  const released = order?.status === 'Released'
+  const done = (id === 'capture' && Boolean(order))
+    || (id === 'release' && released)
+    || ((id === 'deliver' || id === 'invoice') && released && current !== id)
+  if (current === id) return 'workflow-step current'
+  if (done) return 'workflow-step done'
+  return 'workflow-step'
 }
 
 function euro(value: number) {
