@@ -1,26 +1,20 @@
 {
   "version": "2.0.0",
-  "options": {
-    "shell": {
-      "executable": "cmd.exe",
-      "args": ["/d", "/c"]
-    }
-  },
   "tasks": [
-    {
-      "label": "docs-preview: install",
-      "type": "shell",
-      "command": "npm.cmd ci --prefix tools/docs-preview --omit=dev",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared"
-      }
-    },
     {
       "label": "docs-preview: serve",
       "type": "shell",
-      "command": "node tools/docs-preview/preview-server.mjs",
+      "command": "${workspaceFolder}\\tools\\docs-preview\\start-preview.cmd",
+      "options": {
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/d", "/c"]
+        },
+        "env": {
+          "HOST": "127.0.0.1",
+          "PORT": "4173"
+        }
+      },
       "isBackground": true,
       "problemMatcher": {
         "owner": "docs-preview",
@@ -35,7 +29,8 @@
       },
       "presentation": {
         "reveal": "always",
-        "panel": "dedicated"
+        "panel": "dedicated",
+        "focus": true
       }
     }
   ]
