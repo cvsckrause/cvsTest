@@ -18,8 +18,8 @@ dotnet run --project src/Erp.Worker/Erp.Worker.csproj
 npm run dev --prefix src/erp-web
 ```
 
-- API: `http://localhost:5080`
-- UI: `http://localhost:5173`
+- API: `http://localhost:5080` (or the AWS cell via `ERP_API_ORIGIN`)
+- UI: `http://127.0.0.1:5173` — `/api` is proxied; do not point the browser at the ALB
 - OpenAPI: `http://localhost:5080/openapi/v1.json`
 
 Local identity uses `DevelopmentIdentity:TenantId`. Cognito PKCE is reserved for the AWS cell.

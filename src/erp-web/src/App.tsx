@@ -4,7 +4,7 @@ import './App.css'
 import { erpApi } from './api'
 import type { Article, Customer, OrderLine, SalesOrder } from './api'
 
-const initialOrderNumber = 'SO-2026-0001'
+const initialOrderNumber = `SO-${crypto.randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase()}`
 type WorkflowStep = 'capture' | 'release' | 'deliver' | 'invoice'
 
 function App() {
@@ -208,7 +208,8 @@ function App() {
               <div className="total"><dt>Nettobetrag</dt><dd>{euro(order?.netAmount ?? netAmount)}</dd></div>
             </dl>
             <div className="summary-actions">
-              {step === 'capture' && !order && <button className="primary" onClick={saveOrder} disabled={busy}>Auftrag speichern</button>}
+              <p className="action-hint">{notice}</p>
+              {step === 'capture' && !order && <button className="primary" onClick={saveOrder} disabled={busy}>{busy ? 'Speichert …' : 'Auftrag speichern'}</button>}
               {(step === 'release' || (order && order.status !== 'Released')) && order?.status !== 'Released' && (
                 <button className="primary" onClick={releaseOrder} disabled={busy || !order}>
                   {order ? 'Auftrag freigeben' : 'Zuerst speichern'}

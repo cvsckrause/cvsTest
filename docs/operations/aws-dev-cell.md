@@ -45,6 +45,8 @@ After deploy, run the migrator once (subnet and security group IDs come from sta
 aws ecs run-task --cluster <ClusterName> --launch-type FARGATE --task-definition <MigratorTaskDefinitionArn> --network-configuration "awsvpcConfiguration={subnets=[<public-subnet>],securityGroups=[<MigratorSecurityGroupId>],assignPublicIp=ENABLED}"
 ```
 
+The UI stays on the workstation. `npm run dev --prefix src/erp-web` proxies `/api` to this cell’s ALB (`ERP_API_ORIGIN` in `src/erp-web/.env.development`). Open `http://127.0.0.1:5173` — the browser must not call the ALB origin directly (Chrome blocks the JSON POST).
+
 Smoke:
 
 1. `GET /health`

@@ -27,20 +27,25 @@ export type SalesOrder = {
   lines: OrderLine[]
 }
 
-const baseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:5080/api/v1'
+const baseUrl = import.meta.env.VITE_API_URL ?? '/api/v1'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...init?.headers,
-    },
-  })
+  let response: Response
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...init?.headers,
+      },
+    })
+  } catch {
+    throw new Error('API nicht erreichbar. Vite neu starten und die Seite unter http://127.0.0.1:5173 neu laden.')
+  }
 
   if (!response.ok) {
-    const problem = await response.json().catch(() => ({ error: response.statusText }))
-    throw new Error(problem.error ?? `Request failed (${response.status})`)
+    const problem = await response.json().catch(() => ({ error: `${response.status} ${response.statusText}` }))
+    throw new Error(problem.error ?? `Speichern fehlgeschlagen (${response.status})`)
   }
 
   return response.json() as Promise<T>
