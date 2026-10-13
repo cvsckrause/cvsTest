@@ -1,0 +1,10 @@
+{
+  "app": "npx ts-node --prefer-ts-exts bin/erp.ts",
+  "context": {
+    "@aws-cdk/aws-ecs-patterns:removeDefaultDesiredCount": true,
+    "@aws-cdk/aws-rds:databaseProxyUniqueResourceName": true,
+    "environment": "dev",
+    "region": "eu-north-1",
+    "monthlyBudgetUsd": 50
+  }
+}

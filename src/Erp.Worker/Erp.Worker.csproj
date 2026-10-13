@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-Erp.Worker-98fb9bc7-2ca8-4ce6-a96b-ce8912b8d515</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Erp.BuildingBlocks\Erp.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\Modules\Erp.Platform\Erp.Platform.csproj" />
+    <ProjectReference Include="..\Modules\Erp.Billing\Erp.Billing.csproj" />
+    <ProjectReference Include="..\Erp.Persistence\Erp.Persistence.csproj" />
+  </ItemGroup>
+</Project>

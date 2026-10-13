@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Erp.Api/Erp.Api.csproj" />
+    <Project Path="src/Erp.BuildingBlocks/Erp.BuildingBlocks.csproj" />
+    <Project Path="src/Erp.Migrator/Erp.Migrator.csproj" />
+    <Project Path="src/Erp.Persistence/Erp.Persistence.csproj" />
+    <Project Path="src/Erp.Worker/Erp.Worker.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/">
+    <Project Path="src/Modules/Erp.Billing/Erp.Billing.csproj" />
+    <Project Path="src/Modules/Erp.Inventory/Erp.Inventory.csproj" />
+    <Project Path="src/Modules/Erp.MasterData/Erp.MasterData.csproj" />
+    <Project Path="src/Modules/Erp.Platform/Erp.Platform.csproj" />
+    <Project Path="src/Modules/Erp.Sales/Erp.Sales.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Erp.Architecture.Tests/Erp.Architecture.Tests.csproj" />
+    <Project Path="tests/Erp.Domain.Tests/Erp.Domain.Tests.csproj" />
+  </Folder>
+</Solution>

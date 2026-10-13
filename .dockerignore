@@ -1,0 +1,15 @@
+.git
+.cursor
+.agents
+.compound-engineering
+.vscode
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/cdk.out
+**/cdk.out.*
+docs
+plugins
+tools
+infra
