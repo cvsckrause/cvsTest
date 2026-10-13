@@ -1,8 +1,7 @@
 import * as cdk from 'aws-cdk-lib'
-import * as budgets from 'aws-cdk-lib/aws-budgets'
 import * as cognito from 'aws-cdk-lib/aws-cognito'
 import * as ec2 from 'aws-cdk-lib/aws-ec2'
-import * as ecrAssets from 'aws-cdk-lib/aws-ecr-assets'
+import * as ecr from 'aws-cdk-lib/aws-ecr'
 import * as ecs from 'aws-cdk-lib/aws-ecs'
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2'
 import * as events from 'aws-cdk-lib/aws-events'
@@ -13,7 +12,6 @@ import * as s3 from 'aws-cdk-lib/aws-s3'
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
 import * as sqs from 'aws-cdk-lib/aws-sqs'
 import { Construct } from 'constructs'
-import * as path from 'node:path'
 
 export interface ErpDevStackProps extends cdk.StackProps {
   environment: string
@@ -24,8 +22,6 @@ export class ErpDevStack extends cdk.Stack {
     super(scope, id, props)
 
     const environmentName = props.environment
-    const monthlyBudgetUsd = Number(this.node.tryGetContext('monthlyBudgetUsd') ?? 50)
-    const repoRoot = path.join(__dirname, '..', '..')
 
     cdk.Tags.of(this).add('Project', 'cvs-erp')
     cdk.Tags.of(this).add('Environment', environmentName)
@@ -155,18 +151,12 @@ export class ErpDevStack extends cdk.Stack {
       containerInsightsV2: ecs.ContainerInsights.DISABLED,
     })
 
-    const apiImage = ecs.ContainerImage.fromAsset(repoRoot, {
-      file: 'src/Erp.Api/Dockerfile',
-      platform: ecrAssets.Platform.LINUX_AMD64,
-    })
-    const workerImage = ecs.ContainerImage.fromAsset(repoRoot, {
-      file: 'src/Erp.Worker/Dockerfile',
-      platform: ecrAssets.Platform.LINUX_AMD64,
-    })
-    const migratorImage = ecs.ContainerImage.fromAsset(repoRoot, {
-      file: 'src/Erp.Migrator/Dockerfile',
-      platform: ecrAssets.Platform.LINUX_AMD64,
-    })
+    const apiRepository = ecr.Repository.fromRepositoryName(this, 'ApiRepository', 'erp-dev-api')
+    const workerRepository = ecr.Repository.fromRepositoryName(this, 'WorkerRepository', 'erp-dev-worker')
+    const migratorRepository = ecr.Repository.fromRepositoryName(this, 'MigratorRepository', 'erp-dev-migrator')
+    const apiImage = ecs.ContainerImage.fromEcrRepository(apiRepository, 'latest')
+    const workerImage = ecs.ContainerImage.fromEcrRepository(workerRepository, 'latest')
+    const migratorImage = ecs.ContainerImage.fromEcrRepository(migratorRepository, 'latest')
 
     const logGroup = new logs.LogGroup(this, 'ApplicationLogs', {
       retention: logs.RetentionDays.ONE_WEEK,
@@ -314,10 +304,6 @@ export class ErpDevStack extends cdk.Stack {
     const listener = alb.addListener('Http', {
       port: 80,
       open: false,
-      defaultAction: elbv2.ListenerAction.fixedResponse(404, {
-        contentType: 'text/plain',
-        messageBody: 'not found',
-      }),
     })
 
     listener.addTargets('ApiTargets', {
@@ -330,21 +316,6 @@ export class ErpDevStack extends cdk.Stack {
         interval: cdk.Duration.seconds(30),
       },
       deregistrationDelay: cdk.Duration.seconds(10),
-    })
-
-    new budgets.CfnBudget(this, 'MonthlyBudget', {
-      budget: {
-        budgetName: `erp-${environmentName}-monthly`,
-        budgetType: 'COST',
-        timeUnit: 'MONTHLY',
-        budgetLimit: {
-          amount: monthlyBudgetUsd,
-          unit: 'USD',
-        },
-        costFilters: {
-          TagKeyValue: ['user:Project$cvs-erp', `user:Environment$${environmentName}`],
-        },
-      },
     })
 
     new cdk.CfnOutput(this, 'ApiUrl', { value: `http://${alb.loadBalancerDnsName}` })
