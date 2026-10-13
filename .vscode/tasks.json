@@ -1,0 +1,43 @@
+{
+  "version": "2.0.0",
+  "options": {
+    "shell": {
+      "executable": "cmd.exe",
+      "args": ["/d", "/c"]
+    }
+  },
+  "tasks": [
+    {
+      "label": "docs-preview: install",
+      "type": "shell",
+      "command": "npm.cmd ci --prefix tools/docs-preview --omit=dev",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "docs-preview: serve",
+      "type": "shell",
+      "command": "node tools/docs-preview/preview-server.mjs",
+      "isBackground": true,
+      "dependsOn": "docs-preview: install",
+      "problemMatcher": {
+        "owner": "docs-preview",
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "ERP docs preview listening on"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    }
+  ]
+}
