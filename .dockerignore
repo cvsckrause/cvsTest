@@ -1,0 +1,12 @@
+.git
+.cursor
+.agents
+.compound-engineering
+.vscode
+**/bin
+**/obj
+**/node_modules
+**/dist
+docs
+plugins
+tools

@@ -4,6 +4,8 @@ tools/docs-preview/dist/
 
 # .NET
 **/bin/
+!infra/bin/
+!infra/bin/**
 **/obj/
 
 # Frontend build output

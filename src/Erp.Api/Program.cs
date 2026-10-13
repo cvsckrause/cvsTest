@@ -8,10 +8,10 @@ using Erp.Platform.Domain;
 using Erp.Sales.Domain;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
-var connectionString = builder.Configuration.GetConnectionString("Erp")
-    ?? throw new InvalidOperationException("ConnectionStrings:Erp is required.");
+var connectionString = BuildConnectionString(builder.Configuration);
 var cognitoAuthority = builder.Configuration["Authentication:Authority"];
 var authenticationEnabled = !string.IsNullOrWhiteSpace(cognitoAuthority);
 
@@ -252,6 +252,21 @@ static Guid ParseTenant(ClaimsPrincipal user, IConfiguration configuration)
     if (Guid.TryParse(configured, out var developmentTenant)) return developmentTenant;
 
     throw new InvalidOperationException("No verified tenant identity is available.");
+}
+
+static string BuildConnectionString(IConfiguration configuration)
+{
+    var configured = configuration.GetConnectionString("Erp");
+    if (!string.IsNullOrWhiteSpace(configured)) return configured;
+
+    return new NpgsqlConnectionStringBuilder
+    {
+        Host = configuration["Database:Host"] ?? throw new InvalidOperationException("Database:Host is required."),
+        Database = configuration["Database:Name"] ?? "erp_dev",
+        Username = configuration["Database:Username"] ?? throw new InvalidOperationException("Database:Username is required."),
+        Password = configuration["Database:Password"] ?? throw new InvalidOperationException("Database:Password is required."),
+        SslMode = SslMode.Require
+    }.ConnectionString;
 }
 
 static string? RequireIdempotencyKey(HttpContext context)

@@ -2,12 +2,23 @@ using Erp.BuildingBlocks;
 using Erp.Persistence;
 using Erp.Worker;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 var builder = Host.CreateApplicationBuilder(args);
 var tenantId = builder.Configuration.GetValue<Guid?>("Worker:TenantId")
     ?? throw new InvalidOperationException("Worker:TenantId is required.");
-var connectionString = builder.Configuration.GetConnectionString("Erp")
-    ?? throw new InvalidOperationException("ConnectionStrings:Erp is required.");
+var connectionString = builder.Configuration.GetConnectionString("Erp");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    connectionString = new NpgsqlConnectionStringBuilder
+    {
+        Host = builder.Configuration["Database:Host"] ?? throw new InvalidOperationException("Database:Host is required."),
+        Database = builder.Configuration["Database:Name"] ?? "erp_dev",
+        Username = builder.Configuration["Database:Username"] ?? throw new InvalidOperationException("Database:Username is required."),
+        Password = builder.Configuration["Database:Password"] ?? throw new InvalidOperationException("Database:Password is required."),
+        SslMode = SslMode.Require
+    }.ConnectionString;
+}
 
 builder.Services.AddSingleton<ITenantContext>(new TenantContext(tenantId, "erp-worker"));
 builder.Services.AddDbContextFactory<ErpDbContext>((services, options) => options
