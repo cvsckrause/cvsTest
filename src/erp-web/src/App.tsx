@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 import { erpApi } from './api'
@@ -28,6 +28,7 @@ function App() {
   const [step, setStep] = useState<WorkflowStep>('capture')
   const [notice, setNotice] = useState('Stammdaten werden geladen …')
   const [busy, setBusy] = useState(false)
+  const receiptIdempotencyKey = useRef<string | null>(null)
 
   useEffect(() => {
     Promise.all([erpApi.customers(), erpApi.articles()])
@@ -151,6 +152,10 @@ function App() {
       return
     }
 
+    if (!receiptIdempotencyKey.current) {
+      receiptIdempotencyKey.current = createId()
+    }
+
     setBusy(true)
     try {
       const receipt = await erpApi.createStockReceipt(
@@ -158,7 +163,9 @@ function App() {
         receiptQuantity,
         receiptWarehouse || 'MAIN',
         receiptReference,
+        receiptIdempotencyKey.current,
       )
+      receiptIdempotencyKey.current = null
       const [loadedStock, loadedMovements] = await Promise.all([erpApi.stock(), erpApi.stockMovements()])
       setStock(loadedStock)
       setMovements(loadedMovements)
@@ -189,7 +196,7 @@ function App() {
         <div className="rail-footer">CK</div>
       </aside>
 
-      <main>
+      <main className={workspace === 'lager' ? 'lager-main' : undefined}>
         {workspace === 'sales' ? (
           <>
             <header className="topbar">

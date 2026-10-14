@@ -80,6 +80,10 @@ main {
   grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
 
+main.lager-main {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
 .topbar {
   min-height: 78px;
   padding: 0 30px;

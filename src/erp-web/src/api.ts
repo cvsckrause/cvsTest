@@ -92,10 +92,16 @@ export const erpApi = {
   articles: () => request<Article[]>('/articles'),
   stock: () => request<StockBalanceRow[]>('/stock'),
   stockMovements: (limit = 50) => request<StockMovementRow[]>(`/stock/movements?limit=${limit}`),
-  createStockReceipt: (articleId: string, quantity: number, warehouseCode: string, reference?: string) =>
+  createStockReceipt: (
+    articleId: string,
+    quantity: number,
+    warehouseCode: string,
+    reference: string | undefined,
+    idempotencyKey: string,
+  ) =>
     request<StockReceipt>('/stock/receipts', {
       method: 'POST',
-      headers: { 'Idempotency-Key': createId() },
+      headers: { 'Idempotency-Key': idempotencyKey },
       body: JSON.stringify({
         articleId,
         quantity,

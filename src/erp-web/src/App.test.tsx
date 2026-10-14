@@ -88,3 +88,77 @@ test('opens the lager workspace from the nav', async () => {
   expect(within(movementTable).getByText('Wareneingang')).toBeInTheDocument()
   expect(within(movementTable).getByText('WE-1')).toBeInTheDocument()
 })
+
+test('reuses the same Idempotency-Key when a receipt request fails and is retried', async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url.includes('/customers')) {
+      return {
+        ok: true,
+        json: async () => [{ id: 'customer-1', number: '10000', name: 'Nordrad GmbH' }],
+      }
+    }
+    if (url.includes('/articles')) {
+      return {
+        ok: true,
+        json: async () => [{ id: 'article-1', sku: 'BIKE-001', name: 'Cityrad', salesPrice: 799 }],
+      }
+    }
+    if (url.includes('/stock/movements')) {
+      return { ok: true, json: async () => [] }
+    }
+    if (url.includes('/stock/receipts')) {
+      const attempts = fetchMock.mock.calls.filter(([requestUrl]) => String(requestUrl).includes('/stock/receipts')).length
+      if (attempts === 1) {
+        return {
+          ok: false,
+          status: 500,
+          statusText: 'Server Error',
+          json: async () => ({ error: 'temporary failure' }),
+        }
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          id: 'receipt-1',
+          articleId: 'article-1',
+          sku: 'BIKE-001',
+          warehouseCode: 'MAIN',
+          quantity: 1,
+          reference: null,
+          occurredAt: '2026-10-14T09:00:00.000Z',
+          replayed: false,
+        }),
+      }
+    }
+    if (url.includes('/stock')) {
+      return { ok: true, json: async () => [] }
+    }
+    void init
+    return {
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      json: async () => ({ error: 'not found' }),
+    }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  render(<App />)
+  await screen.findByRole('option', { name: 'BIKE-001 · Cityrad' })
+  fireEvent.click(screen.getByTitle('Lager'))
+  await screen.findByRole('heading', { name: 'Bestand & Wareneingang' })
+
+  fireEvent.click(screen.getByRole('button', { name: 'Wareneingang buchen' }))
+  expect((await screen.findAllByText('temporary failure')).length).toBeGreaterThan(0)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Wareneingang buchen' }))
+  expect((await screen.findAllByText(/Wareneingang 1 × BIKE-001 gebucht/)).length).toBeGreaterThan(0)
+
+  const receiptCalls = fetchMock.mock.calls.filter(([requestUrl]) => String(requestUrl).includes('/stock/receipts'))
+  expect(receiptCalls).toHaveLength(2)
+  const firstKey = new Headers(receiptCalls[0][1]?.headers).get('Idempotency-Key')
+  const secondKey = new Headers(receiptCalls[1][1]?.headers).get('Idempotency-Key')
+  expect(firstKey).toBeTruthy()
+  expect(secondKey).toBe(firstKey)
+})
