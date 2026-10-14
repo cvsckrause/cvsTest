@@ -24,7 +24,7 @@ List prices, idle, `eu-north-1`, ~730 hours. Public IPv4 is in-scope because thi
 | KMS + Secrets Manager + logs | USD 2–4 |
 | SQS, EventBridge, S3, Cognito, ECR | usage-priced, near zero idle |
 
-Estimated idle cost: **USD 55–70 / month**. AWS Budget: **USD 50** (will alarm at idle). Destroy instead of leaving it running overnight.
+Estimated idle cost: **USD 55–70 / month**. AWS Budget: **USD 100** (alarms above the idle band; destroy when not in use). Destroy instead of leaving it running overnight.
 
 Images are built in CodeBuild (`erp-dev-images`) and pushed to ECR (`erp-dev-api`, `erp-dev-worker`, `erp-dev-migrator`). Local Docker is not required for synth or deploy.
 
