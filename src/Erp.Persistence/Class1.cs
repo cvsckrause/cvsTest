@@ -16,6 +16,7 @@ public sealed class ErpDbContext(
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Article> Articles => Set<Article>();
     public DbSet<StockBalance> StockBalances => Set<StockBalance>();
+    public DbSet<StockMovement> StockMovements => Set<StockMovement>();
     public DbSet<SalesOrder> SalesOrders => Set<SalesOrder>();
     public DbSet<SalesOrderLine> SalesOrderLines => Set<SalesOrderLine>();
     public DbSet<Delivery> Deliveries => Set<Delivery>();
@@ -59,6 +60,19 @@ public sealed class ErpDbContext(
             entity.Property(x => x.Reserved).HasPrecision(18, 4).IsConcurrencyToken();
             entity.Ignore(x => x.Available);
             entity.HasIndex(x => new { x.TenantId, x.ArticleId, x.WarehouseCode }).IsUnique();
+            entity.HasQueryFilter(x => x.TenantId == tenantContext.TenantId);
+        });
+
+        modelBuilder.Entity<StockMovement>(entity =>
+        {
+            entity.ToTable("stock_movements");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.WarehouseCode).HasMaxLength(40);
+            entity.Property(x => x.Quantity).HasPrecision(18, 4);
+            entity.Property(x => x.MovementType).HasConversion<string>().HasMaxLength(40);
+            entity.Property(x => x.Reference).HasMaxLength(120);
+            entity.Property(x => x.CreatedBy).HasMaxLength(200);
+            entity.HasIndex(x => new { x.TenantId, x.OccurredAt });
             entity.HasQueryFilter(x => x.TenantId == tenantContext.TenantId);
         });
 

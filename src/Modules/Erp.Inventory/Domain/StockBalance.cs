@@ -40,4 +40,11 @@ public sealed class StockBalance : ITenantEntity
 
         Reserved += quantity;
     }
+
+    public void Receive(decimal quantity)
+    {
+        if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity));
+
+        OnHand += quantity;
+    }
 }
