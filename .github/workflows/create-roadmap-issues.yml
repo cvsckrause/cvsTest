@@ -1,0 +1,31 @@
+name: Create roadmap issues
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only print what would be created (uncheck to create labels, milestones, and issues)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: create-roadmap-issues
+  cancel-in-progress: false
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Create roadmap issues
+        run: node .github/scripts/create-roadmap-issues.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
