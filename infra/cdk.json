@@ -5,6 +5,6 @@
     "@aws-cdk/aws-rds:databaseProxyUniqueResourceName": true,
     "environment": "dev",
     "region": "eu-north-1",
-    "monthlyBudgetUsd": 50
+    "monthlyBudgetUsd": 100
   }
 }
