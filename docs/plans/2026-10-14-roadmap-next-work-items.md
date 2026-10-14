@@ -1,16 +1,16 @@
 ---
 title: Roadmap — next work items after Trading Foundation + Lager slice A
 date: 2026-10-14
-status: DRY RUN — for review; no GitHub issues created yet
+status: ACCEPTED 2026-10-14 — decisions D1–D6 accepted as recommended
 team: 2 developers (Dev A = platform/backend lane, Dev B = domain/fullstack lane)
 baseline: main @ d0d9807
 ---
 
-# Roadmap — next work items (dry run)
+# Roadmap — next work items
 
 ## Purpose
 
-This document drafts the next GitHub issues for review. Nothing has been created in GitHub. After review, each `R-xx` block becomes one issue, and each `E-x` block becomes one epic issue that gets broken down later.
+This document is the source of truth for the next GitHub issues. Each `R-xx` block becomes one issue, and each `E-x` row becomes one epic issue that gets broken down later. The workflow `Create roadmap issues` (`.github/workflows/create-roadmap-issues.yml`) creates them from this file. See the last section.
 
 ## Baseline (main @ `d0d9807`)
 
@@ -53,8 +53,8 @@ Domain gaps (needed before any real DACH invoicing):
 
 - **Size.** S = one component, no schema change. M = 2–3 layers or one migration. L = cross-module, needs a migration, UI, and an open decision.
 - **Priority.** P0 = security or blocks parallel work. P1 = correctness of the existing slice. P2 = operability. P3 = next business scope.
-- **Proposed labels.** These are new except `bug` and `enhancement`, which already exist: `priority:P0..P3`, `size:S|M|L`, `area:api|worker|web|infra|persistence|domain|ci`, `type:security|bug|feature|tech-debt`, `lane:A|B`.
-- **Proposed milestones.** These are new; the repo has none yet: `M2a Hardening` (Wave 0–1), `M2b Operability` (Wave 2), and `M3 <business scope>` (Wave 3, after decision D5).
+- **Labels.** `priority:P0..P3`, `size:S|M|L`, `area:api|worker|web|infra|persistence|domain|ci`, `type:security|bug|feature|tech-debt`, `lane:A|B`, and `epic`.
+- **Milestones.** `M2a Hardening` (Wave 0–1), `M2b Operability` (Wave 2), and `M3 Einkauf + E-Rechnung` (Wave 3, per D5).
 
 ## Lanes and order
 
@@ -183,14 +183,14 @@ Sync points: R-02 merges before any other `Program.cs` change. R-11 merges befor
 
 ### R-04 — Close the RLS gap on `addresses` and `customer_addresses`, and guard all tenant tables
 
-`lane:A` `priority:P0` `size:S` `area:persistence` `type:security` — depends on: none
+`lane:A` `priority:P0` `size:S` `area:persistence` `type:security` — depends on: none; decision D6
 
 **Context.** Migration `20261014094003_ArticleAddressManagement` creates both tables without `ENABLE/FORCE ROW LEVEL SECURITY` or `tenant_isolation`. All other `ITenantEntity` tables have them. `src/Erp.Persistence/Migrations/initial.sql` is stale: it lacks both tables and no code uses it.
 
 **Scope.**
 - A new EF migration that adds the policies to both tables, with a `Down` that drops them.
 - A guard test that reflects over the EF model for every entity implementing `ITenantEntity` and asserts that its table has an enabled, forced `tenant_isolation` policy in `pg_policies`. This runs in the R-05 harness; until then, ship it as a model-level test over a migration-SQL snapshot.
-- Resolve `initial.sql` per decision D6.
+- Delete the stale `initial.sql` (decision D6).
 
 **Acceptance.**
 - With `app.tenant_id` set to tenant B, `SELECT * FROM erp.addresses` returns no tenant-A rows. Test this in R-05.
@@ -365,7 +365,7 @@ Sync points: R-02 merges before any other `Program.cs` change. R-11 merges befor
 
 ### R-14 — Add per-tenant number ranges with gapless invoice numbers
 
-`lane:B` `priority:P1` `size:M` `area:domain,persistence` `type:feature` — depends on: R-05
+`lane:B` `priority:P1` `size:M` `area:domain,persistence` `type:feature` — depends on: R-05; decision D4
 
 **Context.**
 - Order numbers are typed in by the client.
@@ -422,7 +422,7 @@ Sync points: R-02 merges before any other `Program.cs` change. R-11 merges befor
 
 ### R-17 — Separate database roles, split seeding from migration, and remove the baseline workaround
 
-`lane:A` `priority:P2` `size:M` `area:persistence,infra` `type:security` — depends on: R-11
+`lane:A` `priority:P2` `size:M` `area:persistence,infra` `type:security` — depends on: R-11; decision D3
 
 **Context.**
 - API, worker, and migrator all connect as the RDS master user `erp`, which owns the tables. FORCE RLS applies to owners, but table ownership also grants DDL rights, and a superuser or `BYPASSRLS` role would skip RLS entirely.
@@ -487,7 +487,7 @@ Sync points: R-02 merges before any other `Program.cs` change. R-11 merges befor
 
 ---
 
-## Wave 3 — next business milestone (epics; pick after decision D5)
+## Wave 3 — next business milestone (epics)
 
 These are deliberately not broken down yet. Each becomes an epic issue and gets its own `docs/plans/` unified plan before work starts.
 
@@ -499,11 +499,13 @@ These are deliberately not broken down yet. Each becomes an epic issue and gets 
 | **E-4 Inventur** (stocktaking) | Year-end count is required for trading companies; uses the movement ledger | R-12 |
 | **E-5 DATEV export** | Hands bookings to the tax advisor; typical DACH mid-market expectation | R-16 |
 
-Recommendation: E-2 is the most time-critical because of the regulation, but it can only start after R-14 and R-16. Run E-1 and E-2 as the two lanes of M3: Dev A on E-2 (format, validation, document storage in S3), Dev B on E-1 (domain and UI).
+Accepted (D5): E-2 is the most time-critical because of the regulation, but it can only start after R-14 and R-16. E-1 and E-2 run as the two lanes of milestone `M3 Einkauf + E-Rechnung`: Dev A on E-2 (format, validation, document storage in S3), Dev B on E-1 (domain and UI). E-3 to E-5 stay in the backlog without a milestone.
 
-## Decisions needed in review
+## Decisions
 
-| ID | Question | Recommendation |
+All six were accepted as recommended on 2026-10-14.
+
+| ID | Question | Accepted outcome |
 | --- | --- | --- |
 | D1 | HTTPS for the dev cell: CloudFront in front of the ALB, or a Route 53 domain with ACM on the ALB? | CloudFront: no domain needed, near-zero cost, and matches the target architecture |
 | D2 | Tenant membership source: Cognito custom attribute or a server-side membership table? | Server-side table, as ADR-002 implies; Cognito stays authentication only |
@@ -512,9 +514,23 @@ Recommendation: E-2 is the most time-critical because of the regulation, but it 
 | D5 | M3 business scope | E-1 plus E-2 in parallel (see Wave 3) |
 | D6 | `initial.sql`: regenerate from EF on each migration, or delete? | Delete; EF migrations are the single source, and `dotnet ef migrations script` produces SQL on demand |
 
-## How these become GitHub issues after acceptance
+## Creating the GitHub issues
 
-1. Create the proposed labels and the `M2a Hardening`, `M2b Operability`, and `M3` milestones.
-2. Create one issue per `R-xx` block: title = heading, body = Context / Scope / Acceptance, labels from the tag line, and "depends on" as a task list linking the dependency issues.
-3. Create E-1 to E-5 as epics in milestone `M3`, with no sub-issues yet.
-4. Assign lanes: Dev A = `lane:A`, Dev B = `lane:B`.
+`.github/scripts/create-roadmap-issues.mjs` parses this file. The `R-xx` headings and tag lines and the Wave 3 table are its input, so keep their format when editing. It creates:
+
+1. The labels from the conventions section, plus `epic`.
+2. The milestones `M2a Hardening` (Wave 0–1), `M2b Operability` (Wave 2), and `M3 Einkauf + E-Rechnung` (E-1, E-2).
+3. One issue per `R-xx` block. The title is the heading, the body is Context / Scope / Acceptance, the labels come from the tag line, and "depends on" becomes a task list linking the dependency issues.
+4. One epic issue per Wave 3 row, labelled `epic` and `priority:P3`.
+
+Lanes are expressed as `lane:A` / `lane:B` labels; assign people when the developers are known.
+
+The run is idempotent. An issue whose title already starts with its key (for example `R-01 — `) is skipped, so a re-run only fills gaps.
+
+Run it from GitHub: Actions → **Create roadmap issues** → Run workflow. `dry_run` is checked by default and only prints the plan to the job summary. Uncheck it to create the issues. The workflow must be on `main` to appear in the Actions list.
+
+Local preview (no writes; `GITHUB_TOKEN` is optional and is used only to read existing labels, milestones, and issues):
+
+```bash
+GITHUB_REPOSITORY=cvsckrause/cvsTest DRY_RUN=true node .github/scripts/create-roadmap-issues.mjs
+```
