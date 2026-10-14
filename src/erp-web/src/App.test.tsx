@@ -119,7 +119,7 @@ test('opens the lager workspace from the nav', async () => {
 })
 
 test('reuses the same Idempotency-Key when a receipt request fails and is retried', async () => {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = String(input)
     if (url.includes('/stock/receipts')) {
       const attempts = fetchMock.mock.calls.filter(([requestUrl]) => String(requestUrl).includes('/stock/receipts')).length
@@ -161,7 +161,7 @@ test('reuses the same Idempotency-Key when a receipt request fails and is retrie
 
 test('does not mint a new Idempotency-Key when stock refresh fails after a successful receipt', async () => {
   let receiptPosts = 0
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = String(input)
     if (url.includes('/stock/receipts')) {
       receiptPosts += 1
