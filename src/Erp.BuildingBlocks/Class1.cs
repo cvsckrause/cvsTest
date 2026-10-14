@@ -18,3 +18,11 @@ public interface ITenantContext
 }
 
 public sealed record TenantContext(Guid TenantId, string UserId) : ITenantContext;
+
+public sealed record AddressSnapshot(
+    string Name,
+    string Street,
+    string PostalCode,
+    string City,
+    string CountryCode,
+    string? AdditionalLine);

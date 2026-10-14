@@ -16,22 +16,48 @@ public sealed class SalesOrder : ITenantEntity
     {
     }
 
-    private SalesOrder(Guid tenantId, Guid customerId, string orderNumber)
+    private SalesOrder(
+        Guid tenantId,
+        Guid customerId,
+        string orderNumber,
+        Guid shipToAddressId,
+        AddressSnapshot shipTo)
     {
         if (tenantId == Guid.Empty) throw new ArgumentException("Tenant is required.", nameof(tenantId));
         if (customerId == Guid.Empty) throw new ArgumentException("Customer is required.", nameof(customerId));
+        if (shipToAddressId == Guid.Empty) throw new ArgumentException("Ship-to address is required.", nameof(shipToAddressId));
         if (string.IsNullOrWhiteSpace(orderNumber)) throw new ArgumentException("Order number is required.", nameof(orderNumber));
+        ArgumentNullException.ThrowIfNull(shipTo);
+        if (string.IsNullOrWhiteSpace(shipTo.Name)) throw new ArgumentException("Ship-to name is required.", nameof(shipTo));
+        if (string.IsNullOrWhiteSpace(shipTo.Street)) throw new ArgumentException("Ship-to street is required.", nameof(shipTo));
+        if (string.IsNullOrWhiteSpace(shipTo.PostalCode)) throw new ArgumentException("Ship-to postal code is required.", nameof(shipTo));
+        if (string.IsNullOrWhiteSpace(shipTo.City)) throw new ArgumentException("Ship-to city is required.", nameof(shipTo));
+        if (string.IsNullOrWhiteSpace(shipTo.CountryCode)) throw new ArgumentException("Ship-to country is required.", nameof(shipTo));
 
         Id = Guid.NewGuid();
         TenantId = tenantId;
         CustomerId = customerId;
         OrderNumber = orderNumber.Trim().ToUpperInvariant();
+        ShipToAddressId = shipToAddressId;
+        ShipToName = shipTo.Name;
+        ShipToStreet = shipTo.Street;
+        ShipToPostalCode = shipTo.PostalCode;
+        ShipToCity = shipTo.City;
+        ShipToCountryCode = shipTo.CountryCode;
+        ShipToAdditionalLine = shipTo.AdditionalLine;
         CreatedAt = DateTimeOffset.UtcNow;
     }
 
     public Guid Id { get; private set; }
     public Guid TenantId { get; private set; }
     public Guid CustomerId { get; private set; }
+    public Guid ShipToAddressId { get; private set; }
+    public string ShipToName { get; private set; } = string.Empty;
+    public string ShipToStreet { get; private set; } = string.Empty;
+    public string ShipToPostalCode { get; private set; } = string.Empty;
+    public string ShipToCity { get; private set; } = string.Empty;
+    public string ShipToCountryCode { get; private set; } = string.Empty;
+    public string? ShipToAdditionalLine { get; private set; }
     public string OrderNumber { get; private set; } = string.Empty;
     public SalesOrderStatus Status { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
@@ -39,8 +65,16 @@ public sealed class SalesOrder : ITenantEntity
     public IReadOnlyCollection<SalesOrderLine> Lines => _lines;
     public decimal NetAmount => _lines.Sum(line => line.Quantity * line.UnitPrice);
 
-    public static SalesOrder Create(Guid tenantId, Guid customerId, string orderNumber) =>
-        new(tenantId, customerId, orderNumber);
+    public AddressSnapshot ShipToSnapshot =>
+        new(ShipToName, ShipToStreet, ShipToPostalCode, ShipToCity, ShipToCountryCode, ShipToAdditionalLine);
+
+    public static SalesOrder Create(
+        Guid tenantId,
+        Guid customerId,
+        string orderNumber,
+        Guid shipToAddressId,
+        AddressSnapshot shipTo) =>
+        new(tenantId, customerId, orderNumber, shipToAddressId, shipTo);
 
     public void AddLine(Guid articleId, string sku, decimal quantity, decimal unitPrice)
     {
@@ -62,6 +96,8 @@ public sealed class SalesOrder : ITenantEntity
             TenantId,
             Id,
             OrderNumber,
+            NetAmount,
+            ShipToSnapshot,
             _lines.Select(line => new ReleasedSalesOrderLine(line.ArticleId, line.Sku, line.Quantity)).ToArray());
     }
 
@@ -128,4 +164,6 @@ public sealed record SalesOrderReleased(
     Guid TenantId,
     Guid SalesOrderId,
     string SalesOrderNumber,
+    decimal NetAmount,
+    AddressSnapshot ShipTo,
     IReadOnlyCollection<ReleasedSalesOrderLine> Lines) : IDomainEvent;

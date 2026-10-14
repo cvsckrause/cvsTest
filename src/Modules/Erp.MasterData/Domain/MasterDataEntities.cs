@@ -28,6 +28,132 @@ public sealed class Customer : ITenantEntity
     public static Customer Create(Guid tenantId, string number, string name) => new(tenantId, number, name);
 }
 
+public enum AddressRole
+{
+    Billing = 0,
+    Shipping = 1
+}
+
+public sealed class Address : ITenantEntity
+{
+    private Address()
+    {
+    }
+
+    private Address(
+        Guid tenantId,
+        string name,
+        string street,
+        string postalCode,
+        string city,
+        string countryCode,
+        string? additionalLine)
+    {
+        if (tenantId == Guid.Empty) throw new ArgumentException("Tenant is required.", nameof(tenantId));
+        Validate(name, street, postalCode, city, countryCode);
+
+        Id = Guid.NewGuid();
+        TenantId = tenantId;
+        Apply(name, street, postalCode, city, countryCode, additionalLine);
+    }
+
+    public Guid Id { get; private set; }
+    public Guid TenantId { get; private set; }
+    public string Name { get; private set; } = string.Empty;
+    public string Street { get; private set; } = string.Empty;
+    public string PostalCode { get; private set; } = string.Empty;
+    public string City { get; private set; } = string.Empty;
+    public string CountryCode { get; private set; } = string.Empty;
+    public string? AdditionalLine { get; private set; }
+
+    public static Address Create(
+        Guid tenantId,
+        string name,
+        string street,
+        string postalCode,
+        string city,
+        string countryCode = "DE",
+        string? additionalLine = null) =>
+        new(tenantId, name, street, postalCode, city, countryCode, additionalLine);
+
+    public void Update(
+        string name,
+        string street,
+        string postalCode,
+        string city,
+        string countryCode,
+        string? additionalLine)
+    {
+        Validate(name, street, postalCode, city, countryCode);
+        Apply(name, street, postalCode, city, countryCode, additionalLine);
+    }
+
+    public AddressSnapshot ToSnapshot() =>
+        new(Name, Street, PostalCode, City, CountryCode, AdditionalLine);
+
+    private void Apply(
+        string name,
+        string street,
+        string postalCode,
+        string city,
+        string countryCode,
+        string? additionalLine)
+    {
+        Name = name.Trim();
+        Street = street.Trim();
+        PostalCode = postalCode.Trim().ToUpperInvariant();
+        City = city.Trim();
+        CountryCode = countryCode.Trim().ToUpperInvariant();
+        AdditionalLine = string.IsNullOrWhiteSpace(additionalLine) ? null : additionalLine.Trim();
+    }
+
+    private static void Validate(
+        string name,
+        string street,
+        string postalCode,
+        string city,
+        string countryCode)
+    {
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("Address name is required.", nameof(name));
+        if (string.IsNullOrWhiteSpace(street)) throw new ArgumentException("Street is required.", nameof(street));
+        if (string.IsNullOrWhiteSpace(postalCode)) throw new ArgumentException("Postal code is required.", nameof(postalCode));
+        if (string.IsNullOrWhiteSpace(city)) throw new ArgumentException("City is required.", nameof(city));
+        if (string.IsNullOrWhiteSpace(countryCode) || countryCode.Trim().Length != 2)
+        {
+            throw new ArgumentException("Country code must be a 2-letter ISO code.", nameof(countryCode));
+        }
+    }
+}
+
+public sealed class CustomerAddress : ITenantEntity
+{
+    private CustomerAddress()
+    {
+    }
+
+    private CustomerAddress(Guid tenantId, Guid customerId, Guid addressId, AddressRole role)
+    {
+        if (tenantId == Guid.Empty) throw new ArgumentException("Tenant is required.", nameof(tenantId));
+        if (customerId == Guid.Empty) throw new ArgumentException("Customer is required.", nameof(customerId));
+        if (addressId == Guid.Empty) throw new ArgumentException("Address is required.", nameof(addressId));
+
+        Id = Guid.NewGuid();
+        TenantId = tenantId;
+        CustomerId = customerId;
+        AddressId = addressId;
+        Role = role;
+    }
+
+    public Guid Id { get; private set; }
+    public Guid TenantId { get; private set; }
+    public Guid CustomerId { get; private set; }
+    public Guid AddressId { get; private set; }
+    public AddressRole Role { get; private set; }
+
+    public static CustomerAddress Link(Guid tenantId, Guid customerId, Guid addressId, AddressRole role) =>
+        new(tenantId, customerId, addressId, role);
+}
+
 public sealed class Article : ITenantEntity
 {
     private Article()
@@ -56,4 +182,13 @@ public sealed class Article : ITenantEntity
 
     public static Article Create(Guid tenantId, string sku, string name, decimal salesPrice) =>
         new(tenantId, sku, name, salesPrice);
+
+    public void Update(string name, decimal salesPrice)
+    {
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("Article name is required.", nameof(name));
+        if (salesPrice < 0) throw new ArgumentOutOfRangeException(nameof(salesPrice));
+
+        Name = name.Trim();
+        SalesPrice = salesPrice;
+    }
 }

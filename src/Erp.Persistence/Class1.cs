@@ -14,6 +14,8 @@ public sealed class ErpDbContext(
     ITenantContext tenantContext) : DbContext(options)
 {
     public DbSet<Customer> Customers => Set<Customer>();
+    public DbSet<Address> Addresses => Set<Address>();
+    public DbSet<CustomerAddress> CustomerAddresses => Set<CustomerAddress>();
     public DbSet<Article> Articles => Set<Article>();
     public DbSet<StockBalance> StockBalances => Set<StockBalance>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
@@ -37,6 +39,30 @@ public sealed class ErpDbContext(
             entity.Property(x => x.Number).HasMaxLength(40);
             entity.Property(x => x.Name).HasMaxLength(240);
             entity.HasIndex(x => new { x.TenantId, x.Number }).IsUnique();
+            entity.HasQueryFilter(x => x.TenantId == tenantContext.TenantId);
+        });
+
+        modelBuilder.Entity<Address>(entity =>
+        {
+            entity.ToTable("addresses");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(240);
+            entity.Property(x => x.Street).HasMaxLength(240);
+            entity.Property(x => x.PostalCode).HasMaxLength(20);
+            entity.Property(x => x.City).HasMaxLength(120);
+            entity.Property(x => x.CountryCode).HasMaxLength(2);
+            entity.Property(x => x.AdditionalLine).HasMaxLength(240);
+            entity.HasIndex(x => new { x.TenantId, x.Name });
+            entity.HasQueryFilter(x => x.TenantId == tenantContext.TenantId);
+        });
+
+        modelBuilder.Entity<CustomerAddress>(entity =>
+        {
+            entity.ToTable("customer_addresses");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Role).HasConversion<string>().HasMaxLength(40);
+            entity.HasIndex(x => new { x.TenantId, x.CustomerId, x.AddressId, x.Role }).IsUnique();
+            entity.HasIndex(x => new { x.TenantId, x.CustomerId, x.Role });
             entity.HasQueryFilter(x => x.TenantId == tenantContext.TenantId);
         });
 
@@ -81,7 +107,14 @@ public sealed class ErpDbContext(
             entity.ToTable("sales_orders");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.OrderNumber).HasMaxLength(40);
+            entity.Property(x => x.ShipToName).HasMaxLength(240);
+            entity.Property(x => x.ShipToStreet).HasMaxLength(240);
+            entity.Property(x => x.ShipToPostalCode).HasMaxLength(20);
+            entity.Property(x => x.ShipToCity).HasMaxLength(120);
+            entity.Property(x => x.ShipToCountryCode).HasMaxLength(2);
+            entity.Property(x => x.ShipToAdditionalLine).HasMaxLength(240);
             entity.Ignore(x => x.NetAmount);
+            entity.Ignore(x => x.ShipToSnapshot);
             entity.HasIndex(x => new { x.TenantId, x.OrderNumber }).IsUnique();
             entity.HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.SalesOrderId);
             entity.Navigation(x => x.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
@@ -104,6 +137,12 @@ public sealed class ErpDbContext(
             entity.ToTable("deliveries");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Number).HasMaxLength(40);
+            entity.Property(x => x.ShipToName).HasMaxLength(240);
+            entity.Property(x => x.ShipToStreet).HasMaxLength(240);
+            entity.Property(x => x.ShipToPostalCode).HasMaxLength(20);
+            entity.Property(x => x.ShipToCity).HasMaxLength(120);
+            entity.Property(x => x.ShipToCountryCode).HasMaxLength(2);
+            entity.Property(x => x.ShipToAdditionalLine).HasMaxLength(240);
             entity.HasIndex(x => new { x.TenantId, x.Number }).IsUnique();
             entity.HasQueryFilter(x => x.TenantId == tenantContext.TenantId);
         });

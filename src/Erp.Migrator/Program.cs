@@ -30,9 +30,15 @@ var options = new DbContextOptionsBuilder<ErpDbContext>()
 await using var db = new ErpDbContext(options, tenant);
 await db.Database.MigrateAsync();
 
+Customer? customer = null;
 if (!await db.Customers.AnyAsync())
 {
-    db.Customers.Add(Customer.Create(tenantId, "10000", "Nordrad GmbH"));
+    customer = Customer.Create(tenantId, "10000", "Nordrad GmbH");
+    db.Customers.Add(customer);
+}
+else
+{
+    customer = await db.Customers.SingleAsync(item => item.Number == "10000");
 }
 
 if (!await db.Articles.AnyAsync())
@@ -40,6 +46,19 @@ if (!await db.Articles.AnyAsync())
     var article = Article.Create(tenantId, "BIKE-001", "Cityrad Nord", 799m);
     db.Articles.Add(article);
     db.StockBalances.Add(StockBalance.Create(tenantId, article.Id, "MAIN", 25));
+}
+
+if (!await db.Addresses.AnyAsync())
+{
+    var address = Address.Create(
+        tenantId,
+        "Nordrad GmbH",
+        "Hafenstraße 12",
+        "20095",
+        "Hamburg",
+        "DE");
+    db.Addresses.Add(address);
+    db.CustomerAddresses.Add(CustomerAddress.Link(tenantId, customer.Id, address.Id, AddressRole.Shipping));
 }
 
 await db.SaveChangesAsync();

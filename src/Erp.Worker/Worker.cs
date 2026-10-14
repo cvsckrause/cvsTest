@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Erp.Billing.Domain;
+using Erp.BuildingBlocks;
 using Erp.Persistence;
 using Erp.Platform.Domain;
 using Microsoft.EntityFrameworkCore;
@@ -53,10 +54,16 @@ public sealed class Worker(
                         new JsonSerializerOptions(JsonSerializerDefaults.Web))
                         ?? throw new InvalidOperationException("Released-order payload is invalid.");
 
+                    if (released.ShipTo is null)
+                    {
+                        throw new InvalidOperationException("Released-order payload is missing ship-to snapshot.");
+                    }
+
                     db.Deliveries.Add(new Delivery(
                         released.TenantId,
                         released.SalesOrderId,
-                        $"DEL-{released.SalesOrderNumber}"));
+                        $"DEL-{released.SalesOrderNumber}",
+                        released.ShipTo));
                     db.Invoices.Add(new Invoice(
                         released.TenantId,
                         released.SalesOrderId,
@@ -83,5 +90,6 @@ public sealed class Worker(
         Guid TenantId,
         Guid SalesOrderId,
         string SalesOrderNumber,
-        decimal NetAmount);
+        decimal NetAmount,
+        AddressSnapshot? ShipTo);
 }

@@ -2,20 +2,25 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 import { erpApi } from './api'
-import type { Article, Customer, OrderLine, SalesOrder, StockBalanceRow, StockMovementRow } from './api'
+import type { Address, Article, Customer, CustomerAddress, OrderLine, SalesOrder, StockBalanceRow, StockMovementRow } from './api'
 import { createId } from './id'
 
 const initialOrderNumber = `SO-${createId().replaceAll('-', '').slice(0, 8).toUpperCase()}`
 type WorkflowStep = 'capture' | 'release' | 'deliver' | 'invoice'
-type Workspace = 'sales' | 'lager'
+type Workspace = 'sales' | 'stamm' | 'lager'
+type StammTab = 'articles' | 'addresses'
 
 function App() {
   const [workspace, setWorkspace] = useState<Workspace>('sales')
+  const [stammTab, setStammTab] = useState<StammTab>('articles')
   const [customers, setCustomers] = useState<Customer[]>([])
   const [articles, setArticles] = useState<Article[]>([])
+  const [addresses, setAddresses] = useState<Address[]>([])
+  const [shippingLinks, setShippingLinks] = useState<CustomerAddress[]>([])
   const [stock, setStock] = useState<StockBalanceRow[]>([])
   const [movements, setMovements] = useState<StockMovementRow[]>([])
   const [customerId, setCustomerId] = useState('')
+  const [shipToAddressId, setShipToAddressId] = useState('')
   const [articleId, setArticleId] = useState('')
   const [quantity, setQuantity] = useState(1)
   const [receiptArticleId, setReceiptArticleId] = useState('')
@@ -30,18 +35,61 @@ function App() {
   const [busy, setBusy] = useState(false)
   const receiptIdempotencyKey = useRef<string | null>(null)
 
+  const [articleForm, setArticleForm] = useState({ sku: '', name: '', salesPrice: 0, openingStock: 0 })
+  const [editingArticleId, setEditingArticleId] = useState<string | null>(null)
+  const [addressForm, setAddressForm] = useState({
+    name: '',
+    street: '',
+    postalCode: '',
+    city: '',
+    countryCode: 'DE',
+    additionalLine: '',
+  })
+  const [editingAddressId, setEditingAddressId] = useState<string | null>(null)
+  const [linkCustomerId, setLinkCustomerId] = useState('')
+  const [linkAddressId, setLinkAddressId] = useState('')
+  const [linkRole, setLinkRole] = useState('Shipping')
+
   useEffect(() => {
     Promise.all([erpApi.customers(), erpApi.articles()])
-      .then(([loadedCustomers, loadedArticles]) => {
+      .then(async ([loadedCustomers, loadedArticles]) => {
         setCustomers(loadedCustomers)
         setArticles(loadedArticles)
         setCustomerId(loadedCustomers[0]?.id ?? '')
+        setLinkCustomerId(loadedCustomers[0]?.id ?? '')
         setArticleId(loadedArticles[0]?.id ?? '')
         setReceiptArticleId(loadedArticles[0]?.id ?? '')
-        setNotice('Bereit')
+        try {
+          const loadedAddresses = await erpApi.addresses()
+          setAddresses(loadedAddresses)
+          setLinkAddressId(loadedAddresses[0]?.id ?? '')
+          setNotice('Bereit')
+        } catch (error) {
+          setNotice(
+            error instanceof Error
+              ? `Artikel geladen. Adressen-API fehlt noch (${error.message})`
+              : 'Artikel geladen. Adressen-API fehlt noch.',
+          )
+        }
       })
       .catch((error: Error) => setNotice(`API nicht erreichbar: ${error.message}`))
   }, [])
+
+  useEffect(() => {
+    if (!customerId) {
+      setShippingLinks([])
+      setShipToAddressId('')
+      return
+    }
+
+    erpApi.customerAddresses(customerId, 'Shipping')
+      .then((links) => {
+        setShippingLinks(links)
+        setShipToAddressId((current) =>
+          links.some((link) => link.addressId === current) ? current : (links[0]?.addressId ?? ''))
+      })
+      .catch((error: Error) => setNotice(`Lieferadressen nicht ladbar: ${error.message}`))
+  }, [customerId])
 
   useEffect(() => {
     if (workspace !== 'lager') return
@@ -65,6 +113,11 @@ function App() {
   function openSales() {
     setWorkspace('sales')
     setNotice('Vertrieb')
+  }
+
+  function openStamm() {
+    setWorkspace('stamm')
+    setNotice('Stammdaten: Artikel und Adressen verwalten.')
   }
 
   function openLager() {
@@ -102,13 +155,13 @@ function App() {
   }
 
   async function saveOrder() {
-    if (!customerId || lines.length === 0) {
-      setNotice('Kunde und mindestens eine Position sind erforderlich. Klicke „Position hinzufügen“.')
+    if (!customerId || !shipToAddressId || lines.length === 0) {
+      setNotice('Kunde, Lieferadresse und mindestens eine Position sind erforderlich.')
       return
     }
     setBusy(true)
     try {
-      const saved = await erpApi.createOrder(customerId, orderNumber, lines)
+      const saved = await erpApi.createOrder(customerId, shipToAddressId, orderNumber, lines)
       setOrder(saved)
       setStep('release')
       setNotice(`Auftrag ${saved.orderNumber} gespeichert. Als Nächstes: „Auftrag freigeben“.`)
@@ -143,6 +196,40 @@ function App() {
     setStep('capture')
     setOrderNumber((current) => current.replace(/(\d+)$/, (digits) => String(Number(digits) + 1).padStart(digits.length, '0')))
     setNotice('Neuer Auftrag. Position hinzufügen, speichern, dann freigeben.')
+  }
+
+  async function refreshArticles() {
+    const loadedArticles = await erpApi.articles()
+    setArticles(loadedArticles)
+    setArticleId((current) => loadedArticles.some((item) => item.id === current) ? current : (loadedArticles[0]?.id ?? ''))
+    setReceiptArticleId((current) => loadedArticles.some((item) => item.id === current) ? current : (loadedArticles[0]?.id ?? ''))
+  }
+
+  async function refreshAddresses() {
+    const loadedAddresses = await erpApi.addresses()
+    setAddresses(loadedAddresses)
+    setLinkAddressId((current) => loadedAddresses.some((item) => item.id === current) ? current : (loadedAddresses[0]?.id ?? ''))
+  }
+
+  async function saveArticle(event: FormEvent) {
+    event.preventDefault()
+    setBusy(true)
+    try {
+      if (editingArticleId) {
+        await erpApi.updateArticle(editingArticleId, articleForm.name, articleForm.salesPrice)
+        setNotice(`Artikel ${articleForm.sku || editingArticleId} aktualisiert.`)
+      } else {
+        await erpApi.createArticle(articleForm.sku, articleForm.name, articleForm.salesPrice, articleForm.openingStock)
+        setNotice(`Artikel ${articleForm.sku} angelegt.`)
+      }
+      setEditingArticleId(null)
+      setArticleForm({ sku: '', name: '', salesPrice: 0, openingStock: 0 })
+      await refreshArticles()
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Artikel konnte nicht gespeichert werden.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function bookReceipt(event: FormEvent) {
@@ -192,13 +279,85 @@ function App() {
     }
   }
 
+
+  async function saveAddress(event: FormEvent) {
+    event.preventDefault()
+    setBusy(true)
+    try {
+      const payload = {
+        name: addressForm.name,
+        street: addressForm.street,
+        postalCode: addressForm.postalCode,
+        city: addressForm.city,
+        countryCode: addressForm.countryCode,
+        additionalLine: addressForm.additionalLine || null,
+      }
+      if (editingAddressId) {
+        await erpApi.updateAddress(editingAddressId, payload)
+        setNotice('Adresse aktualisiert.')
+      } else {
+        await erpApi.createAddress(payload)
+        setNotice('Adresse angelegt.')
+      }
+      setEditingAddressId(null)
+      setAddressForm({ name: '', street: '', postalCode: '', city: '', countryCode: 'DE', additionalLine: '' })
+      await refreshAddresses()
+      if (customerId) {
+        const links = await erpApi.customerAddresses(customerId, 'Shipping')
+        setShippingLinks(links)
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Adresse konnte nicht gespeichert werden.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function linkAddress(event: FormEvent) {
+    event.preventDefault()
+    if (!linkCustomerId || !linkAddressId) return
+    setBusy(true)
+    try {
+      await erpApi.linkCustomerAddress(linkCustomerId, linkAddressId, linkRole)
+      setNotice(`Adresse als ${linkRole} verknüpft.`)
+      if (linkCustomerId === customerId) {
+        const links = await erpApi.customerAddresses(customerId, 'Shipping')
+        setShippingLinks(links)
+        if (!shipToAddressId && links[0]) setShipToAddressId(links[0].addressId)
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Verknüpfung fehlgeschlagen.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function editArticle(article: Article) {
+    setEditingArticleId(article.id)
+    setArticleForm({ sku: article.sku, name: article.name, salesPrice: article.salesPrice, openingStock: 0 })
+    setStammTab('articles')
+  }
+
+  function editAddress(address: Address) {
+    setEditingAddressId(address.id)
+    setAddressForm({
+      name: address.name,
+      street: address.street,
+      postalCode: address.postalCode,
+      city: address.city,
+      countryCode: address.countryCode,
+      additionalLine: address.additionalLine ?? '',
+    })
+    setStammTab('addresses')
+  }
+
   return (
     <div className="app-shell">
       <aside className="rail">
         <div className="product-mark" aria-label="Northstar ERP">N</div>
         <nav aria-label="Hauptnavigation">
           <button className={`nav-item${workspace === 'sales' ? ' active' : ''}`} title="Vertrieb" onClick={openSales}><span>V</span>Vertrieb</button>
-          <button className="nav-item" title="Stammdaten" onClick={() => setNotice('Stammdaten sind in dieser Scheibe nur Kunde und Artikel in der Auftragserfassung.')}><span>S</span>Stamm</button>
+          <button className={`nav-item${workspace === 'stamm' ? ' active' : ''}`} title="Stammdaten" onClick={openStamm}><span>S</span>Stamm</button>
           <button className={`nav-item${workspace === 'lager' ? ' active' : ''}`} title="Lager" onClick={openLager}><span>L</span>Lager</button>
           <button className="nav-item" title="Auswertungen" onClick={() => setNotice('Auswertungen sind in dieser Scheibe nicht enthalten.')}><span>A</span>Analyse</button>
         </nav>
@@ -225,7 +384,7 @@ function App() {
 
             <section className="workspace">
               <div className="document">
-                <div className="document-head">
+                <div className="document-head document-head-three">
                   <label>
                     Auftragsnummer
                     <input value={orderNumber} onChange={(event) => setOrderNumber(event.target.value)} disabled={Boolean(order)} />
@@ -236,6 +395,17 @@ function App() {
                       <option value="">Kunde wählen</option>
                       {customers.map((customer) => (
                         <option key={customer.id} value={customer.id}>{customer.number} · {customer.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Lieferadresse
+                    <select value={shipToAddressId} onChange={(event) => setShipToAddressId(event.target.value)} disabled={Boolean(order)}>
+                      <option value="">Adresse wählen</option>
+                      {shippingLinks.map((link) => (
+                        <option key={link.id} value={link.addressId}>
+                          {link.address.name} · {link.address.postalCode} {link.address.city}
+                        </option>
                       ))}
                     </select>
                   </label>
@@ -311,6 +481,172 @@ function App() {
                   <span><kbd>Tab</kbd> nächstes Feld</span>
                   <span><kbd>Enter</kbd> Position hinzufügen</span>
                 </div>
+              </aside>
+            </section>
+          </>
+        ) : workspace === 'stamm' ? (
+          <>
+            <header className="topbar">
+              <div>
+                <p className="breadcrumb">Stammdaten</p>
+                <h1>Artikel & Adressen</h1>
+              </div>
+              <div className="system-state"><span /> Entwicklung · Nordics</div>
+            </header>
+
+            <div className="workflow stamm-tabs" aria-label="Stammdatenbereiche">
+              <button type="button" className={stammTab === 'articles' ? 'workflow-step current' : 'workflow-step'} onClick={() => setStammTab('articles')}><span>A</span>Artikel</button>
+              <button type="button" className={stammTab === 'addresses' ? 'workflow-step current' : 'workflow-step'} onClick={() => setStammTab('addresses')}><span>D</span>Adressen</button>
+            </div>
+
+            <section className="workspace stamm-workspace">
+              {stammTab === 'articles' ? (
+                <div className="document">
+                  <div className="section-title">
+                    <h2>{editingArticleId ? 'Artikel bearbeiten' : 'Artikel anlegen'}</h2>
+                    <span>{articles.length} Artikel</span>
+                  </div>
+                  <form className="master-form" onSubmit={saveArticle}>
+                    <label>
+                      SKU
+                      <input value={articleForm.sku} onChange={(event) => setArticleForm((current) => ({ ...current, sku: event.target.value }))} disabled={Boolean(editingArticleId)} required={!editingArticleId} />
+                    </label>
+                    <label>
+                      Bezeichnung
+                      <input value={articleForm.name} onChange={(event) => setArticleForm((current) => ({ ...current, name: event.target.value }))} required />
+                    </label>
+                    <label>
+                      Verkaufspreis
+                      <input type="number" min="0" step="0.01" value={articleForm.salesPrice} onChange={(event) => setArticleForm((current) => ({ ...current, salesPrice: Number(event.target.value) }))} required />
+                    </label>
+                    {!editingArticleId && (
+                      <label>
+                        Anfangsbestand
+                        <input type="number" min="0" step="0.01" value={articleForm.openingStock} onChange={(event) => setArticleForm((current) => ({ ...current, openingStock: Number(event.target.value) }))} />
+                      </label>
+                    )}
+                    <div className="form-actions">
+                      <button className="primary" type="submit" disabled={busy}>{busy ? 'Speichert …' : editingArticleId ? 'Artikel speichern' : 'Artikel anlegen'}</button>
+                      {editingArticleId && (
+                        <button className="secondary" type="button" onClick={() => { setEditingArticleId(null); setArticleForm({ sku: '', name: '', salesPrice: 0, openingStock: 0 }) }}>Abbrechen</button>
+                      )}
+                    </div>
+                  </form>
+
+                  <div className="section-title">
+                    <h2>Artikelliste</h2>
+                  </div>
+                  <div className="master-list" role="table" aria-label="Artikelliste">
+                    <div className="master-row master-head" role="row">
+                      <span>SKU</span><span>Bezeichnung</span><span>Preis</span><span />
+                    </div>
+                    {articles.map((article) => (
+                      <div className="master-row" role="row" key={article.id}>
+                        <strong>{article.sku}</strong>
+                        <span>{article.name}</span>
+                        <span>{euro(article.salesPrice)}</span>
+                        <button className="secondary" type="button" onClick={() => editArticle(article)}>Bearbeiten</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="document">
+                  <div className="section-title">
+                    <h2>{editingAddressId ? 'Adresse bearbeiten' : 'Adresse anlegen'}</h2>
+                    <span>{addresses.length} Adressen</span>
+                  </div>
+                  <form className="master-form" onSubmit={saveAddress}>
+                    <label>
+                      Name
+                      <input value={addressForm.name} onChange={(event) => setAddressForm((current) => ({ ...current, name: event.target.value }))} required />
+                    </label>
+                    <label>
+                      Straße
+                      <input value={addressForm.street} onChange={(event) => setAddressForm((current) => ({ ...current, street: event.target.value }))} required />
+                    </label>
+                    <label>
+                      PLZ
+                      <input value={addressForm.postalCode} onChange={(event) => setAddressForm((current) => ({ ...current, postalCode: event.target.value }))} required />
+                    </label>
+                    <label>
+                      Ort
+                      <input value={addressForm.city} onChange={(event) => setAddressForm((current) => ({ ...current, city: event.target.value }))} required />
+                    </label>
+                    <label>
+                      Land
+                      <input value={addressForm.countryCode} onChange={(event) => setAddressForm((current) => ({ ...current, countryCode: event.target.value }))} maxLength={2} required />
+                    </label>
+                    <label>
+                      Zusatz
+                      <input value={addressForm.additionalLine} onChange={(event) => setAddressForm((current) => ({ ...current, additionalLine: event.target.value }))} />
+                    </label>
+                    <div className="form-actions">
+                      <button className="primary" type="submit" disabled={busy}>{busy ? 'Speichert …' : editingAddressId ? 'Adresse speichern' : 'Adresse anlegen'}</button>
+                      {editingAddressId && (
+                        <button className="secondary" type="button" onClick={() => { setEditingAddressId(null); setAddressForm({ name: '', street: '', postalCode: '', city: '', countryCode: 'DE', additionalLine: '' }) }}>Abbrechen</button>
+                      )}
+                    </div>
+                  </form>
+
+                  <div className="section-title">
+                    <h2>Kunde verknüpfen</h2>
+                  </div>
+                  <form className="master-form link-form" onSubmit={linkAddress}>
+                    <label>
+                      Kunde
+                      <select value={linkCustomerId} onChange={(event) => setLinkCustomerId(event.target.value)}>
+                        {customers.map((customer) => (
+                          <option key={customer.id} value={customer.id}>{customer.number} · {customer.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Adresse
+                      <select value={linkAddressId} onChange={(event) => setLinkAddressId(event.target.value)}>
+                        {addresses.map((address) => (
+                          <option key={address.id} value={address.id}>{address.name} · {address.city}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Rolle
+                      <select value={linkRole} onChange={(event) => setLinkRole(event.target.value)}>
+                        <option value="Shipping">Shipping</option>
+                        <option value="Billing">Billing</option>
+                      </select>
+                    </label>
+                    <div className="form-actions">
+                      <button className="secondary" type="submit" disabled={busy || !linkCustomerId || !linkAddressId}>Verknüpfen</button>
+                    </div>
+                  </form>
+
+                  <div className="section-title">
+                    <h2>Adressliste</h2>
+                  </div>
+                  <div className="master-list" role="table" aria-label="Adressliste">
+                    <div className="master-row master-head address-row" role="row">
+                      <span>Name</span><span>Ort</span><span>Land</span><span />
+                    </div>
+                    {addresses.map((address) => (
+                      <div className="master-row address-row" role="row" key={address.id}>
+                        <strong>{address.name}</strong>
+                        <span>{address.postalCode} {address.city}</span>
+                        <span>{address.countryCode}</span>
+                        <button className="secondary" type="button" onClick={() => editAddress(address)}>Bearbeiten</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <aside className="summary">
+                <div className="summary-heading">
+                  <span className="status">Stamm</span>
+                  <span>{stammTab === 'articles' ? 'Artikel' : 'Adressen'}</span>
+                </div>
+                <p className="action-hint">{notice}</p>
+                <button className="secondary" type="button" onClick={openSales}>Zur Auftragserfassung</button>
               </aside>
             </section>
           </>
