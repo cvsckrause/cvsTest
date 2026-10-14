@@ -23,6 +23,8 @@ if (string.IsNullOrWhiteSpace(connectionString))
     }.ConnectionString;
 }
 
+await BaselineExistingSchemaAsync(connectionString);
+
 var options = new DbContextOptionsBuilder<ErpDbContext>()
     .UseNpgsql(connectionString)
     .AddInterceptors(new TenantConnectionInterceptor(tenant))
@@ -67,3 +69,52 @@ Console.WriteLine("Database migrated and development tenant seeded.");
 static string Require(string name) =>
     Environment.GetEnvironmentVariable(name)
     ?? throw new InvalidOperationException($"{name} is required.");
+
+static async Task BaselineExistingSchemaAsync(string connectionString)
+{
+    // The AWS cell was first created with tables already present while the EF history
+    // table lived in public. With HasDefaultSchema("erp"), MigrateAsync looks in erp
+    // and would try to recreate InitialTradingSchema. Seed the history row when the
+    // base tables already exist so later migrations can apply cleanly.
+    await using var connection = new NpgsqlConnection(connectionString);
+    await connection.OpenAsync();
+    await using var command = connection.CreateCommand();
+    command.CommandText = """
+        CREATE SCHEMA IF NOT EXISTS erp;
+
+        CREATE TABLE IF NOT EXISTS erp."__EFMigrationsHistory" (
+            "MigrationId" character varying(150) NOT NULL,
+            "ProductVersion" character varying(32) NOT NULL,
+            CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY ("MigrationId")
+        );
+
+        INSERT INTO erp."__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+        SELECT '20261013130016_InitialTradingSchema', '10.0.4'
+        WHERE EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = 'erp' AND table_name = 'articles'
+        )
+        AND NOT EXISTS (
+            SELECT 1
+            FROM erp."__EFMigrationsHistory"
+            WHERE "MigrationId" = '20261013130016_InitialTradingSchema'
+        );
+
+        DO $sync$
+        BEGIN
+            IF to_regclass('public."__EFMigrationsHistory"') IS NOT NULL THEN
+                INSERT INTO erp."__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+                SELECT h."MigrationId", h."ProductVersion"
+                FROM public."__EFMigrationsHistory" h
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM erp."__EFMigrationsHistory" e
+                    WHERE e."MigrationId" = h."MigrationId"
+                );
+            END IF;
+        END
+        $sync$;
+        """;
+    await command.ExecuteNonQueryAsync();
+}
