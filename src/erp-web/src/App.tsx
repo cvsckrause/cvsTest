@@ -165,17 +165,26 @@ function App() {
         receiptReference,
         receiptIdempotencyKey.current,
       )
+      // Booking succeeded — never reuse this key for a new intentional receipt.
       receiptIdempotencyKey.current = null
-      const [loadedStock, loadedMovements] = await Promise.all([erpApi.stock(), erpApi.stockMovements()])
-      setStock(loadedStock)
-      setMovements(loadedMovements)
-      setReceiptQuantity(1)
-      setReceiptReference('')
-      setNotice(
-        receipt.replayed
-          ? `Wareneingang ${receipt.sku} bereits gebucht (Idempotenz).`
-          : `Wareneingang ${receipt.quantity.toLocaleString('de-DE')} × ${receipt.sku} gebucht.`,
-      )
+      const bookedNotice = receipt.replayed
+        ? `Wareneingang ${receipt.sku} bereits gebucht (Idempotenz).`
+        : `Wareneingang ${receipt.quantity.toLocaleString('de-DE')} × ${receipt.sku} gebucht.`
+
+      try {
+        const [loadedStock, loadedMovements] = await Promise.all([erpApi.stock(), erpApi.stockMovements()])
+        setStock(loadedStock)
+        setMovements(loadedMovements)
+        setReceiptQuantity(1)
+        setReceiptReference('')
+        setNotice(bookedNotice)
+      } catch (refreshError) {
+        setNotice(
+          `${bookedNotice} Anzeige konnte nicht aktualisiert werden: ${
+            refreshError instanceof Error ? refreshError.message : 'unbekannter Fehler'
+          }`,
+        )
+      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Wareneingang fehlgeschlagen.')
     } finally {
