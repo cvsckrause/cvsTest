@@ -44,16 +44,25 @@ function App() {
   const [linkRole, setLinkRole] = useState('Shipping')
 
   useEffect(() => {
-    Promise.all([erpApi.customers(), erpApi.articles(), erpApi.addresses()])
-      .then(([loadedCustomers, loadedArticles, loadedAddresses]) => {
+    Promise.all([erpApi.customers(), erpApi.articles()])
+      .then(async ([loadedCustomers, loadedArticles]) => {
         setCustomers(loadedCustomers)
         setArticles(loadedArticles)
-        setAddresses(loadedAddresses)
         setCustomerId(loadedCustomers[0]?.id ?? '')
         setLinkCustomerId(loadedCustomers[0]?.id ?? '')
         setArticleId(loadedArticles[0]?.id ?? '')
-        setLinkAddressId(loadedAddresses[0]?.id ?? '')
-        setNotice('Bereit')
+        try {
+          const loadedAddresses = await erpApi.addresses()
+          setAddresses(loadedAddresses)
+          setLinkAddressId(loadedAddresses[0]?.id ?? '')
+          setNotice('Bereit')
+        } catch (error) {
+          setNotice(
+            error instanceof Error
+              ? `Artikel geladen. Adressen-API fehlt noch (${error.message})`
+              : 'Artikel geladen. Adressen-API fehlt noch.',
+          )
+        }
       })
       .catch((error: Error) => setNotice(`API nicht erreichbar: ${error.message}`))
   }, [])
@@ -152,11 +161,15 @@ function App() {
     setNotice('Neuer Auftrag. Position hinzufügen, speichern, dann freigeben.')
   }
 
-  async function refreshMasterData() {
-    const [loadedArticles, loadedAddresses] = await Promise.all([erpApi.articles(), erpApi.addresses()])
+  async function refreshArticles() {
+    const loadedArticles = await erpApi.articles()
     setArticles(loadedArticles)
-    setAddresses(loadedAddresses)
     setArticleId((current) => loadedArticles.some((item) => item.id === current) ? current : (loadedArticles[0]?.id ?? ''))
+  }
+
+  async function refreshAddresses() {
+    const loadedAddresses = await erpApi.addresses()
+    setAddresses(loadedAddresses)
     setLinkAddressId((current) => loadedAddresses.some((item) => item.id === current) ? current : (loadedAddresses[0]?.id ?? ''))
   }
 
@@ -173,7 +186,7 @@ function App() {
       }
       setEditingArticleId(null)
       setArticleForm({ sku: '', name: '', salesPrice: 0, openingStock: 0 })
-      await refreshMasterData()
+      await refreshArticles()
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Artikel konnte nicht gespeichert werden.')
     } finally {
@@ -202,7 +215,7 @@ function App() {
       }
       setEditingAddressId(null)
       setAddressForm({ name: '', street: '', postalCode: '', city: '', countryCode: 'DE', additionalLine: '' })
-      await refreshMasterData()
+      await refreshAddresses()
       if (customerId) {
         const links = await erpApi.customerAddresses(customerId, 'Shipping')
         setShippingLinks(links)

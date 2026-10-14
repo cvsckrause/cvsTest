@@ -51,6 +51,27 @@ export type SalesOrder = {
 
 const baseUrl = import.meta.env.VITE_API_URL ?? '/api/v1'
 
+async function readJson<T>(response: Response, path: string): Promise<T> {
+  const contentType = response.headers.get('content-type') ?? ''
+  const raw = await response.text()
+  if (!raw) {
+    if (!response.ok) throw new Error(`Speichern fehlgeschlagen (${response.status})`)
+    return undefined as T
+  }
+
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    if (contentType.includes('text/html') || raw.trimStart().startsWith('<!')) {
+      throw new Error(
+        `API ${path} lieferte HTML statt JSON (${response.status}). ` +
+          'Wahrscheinlich ist die AWS-Zelle noch auf dem alten Image — neu bauen/deployen, oder lokal die neue API starten.',
+      )
+    }
+    throw new Error(`Ungültige API-Antwort für ${path} (${response.status}).`)
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
   try {
@@ -65,12 +86,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error('API nicht erreichbar. Seite neu laden oder prüfen, ob die ERP-API läuft.')
   }
 
+  const payload = await readJson<{ error?: string } & T>(response, path)
   if (!response.ok) {
-    const problem = await response.json().catch(() => ({ error: `${response.status} ${response.statusText}` }))
-    throw new Error(problem.error ?? `Speichern fehlgeschlagen (${response.status})`)
+    throw new Error(payload?.error ?? `Speichern fehlgeschlagen (${response.status})`)
   }
 
-  return response.json() as Promise<T>
+  return payload as T
 }
 
 export const erpApi = {

@@ -2,6 +2,20 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
 
+function jsonResponse(data: unknown, ok = true, status = ok ? 200 : 400) {
+  const body = JSON.stringify(data)
+  return {
+    ok,
+    status,
+    statusText: ok ? 'OK' : 'Bad Request',
+    headers: {
+      get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/json' : null),
+    },
+    text: async () => body,
+    json: async () => data,
+  }
+}
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -9,17 +23,23 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn()
-    .mockResolvedValueOnce({
-      ok: true,
-      json: async () => [{ id: 'customer-1', number: '10000', name: 'Nordrad GmbH' }],
-    })
-    .mockResolvedValueOnce({
-      ok: true,
-      json: async () => [{ id: 'article-1', sku: 'BIKE-001', name: 'Cityrad', salesPrice: 799 }],
-    })
-    .mockResolvedValueOnce({
-      ok: true,
-      json: async () => [{
+    .mockResolvedValueOnce(jsonResponse([{ id: 'customer-1', number: '10000', name: 'Nordrad GmbH' }]))
+    .mockResolvedValueOnce(jsonResponse([{ id: 'article-1', sku: 'BIKE-001', name: 'Cityrad', salesPrice: 799 }]))
+    .mockResolvedValueOnce(jsonResponse([{
+      id: 'address-1',
+      name: 'Nordrad GmbH',
+      street: 'Hafenstraße 12',
+      postalCode: '20095',
+      city: 'Hamburg',
+      countryCode: 'DE',
+      additionalLine: null,
+    }]))
+    .mockResolvedValue(jsonResponse([{
+      id: 'link-1',
+      customerId: 'customer-1',
+      addressId: 'address-1',
+      role: 'Shipping',
+      address: {
         id: 'address-1',
         name: 'Nordrad GmbH',
         street: 'Hafenstraße 12',
@@ -27,26 +47,8 @@ beforeEach(() => {
         city: 'Hamburg',
         countryCode: 'DE',
         additionalLine: null,
-      }],
-    })
-    .mockResolvedValue({
-      ok: true,
-      json: async () => [{
-        id: 'link-1',
-        customerId: 'customer-1',
-        addressId: 'address-1',
-        role: 'Shipping',
-        address: {
-          id: 'address-1',
-          name: 'Nordrad GmbH',
-          street: 'Hafenstraße 12',
-          postalCode: '20095',
-          city: 'Hamburg',
-          countryCode: 'DE',
-          additionalLine: null,
-        },
-      }],
-    }))
+      },
+    }])))
 })
 
 test('renders the order-entry workstation with ship-to', async () => {
