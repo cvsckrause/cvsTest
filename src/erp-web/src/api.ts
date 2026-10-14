@@ -40,7 +40,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       },
     })
   } catch {
-    throw new Error('API nicht erreichbar. Vite neu starten und die Seite unter http://127.0.0.1:5173 neu laden.')
+    throw new Error('API nicht erreichbar. Seite neu laden oder prüfen, ob die ERP-API läuft.')
   }
 
   if (!response.ok) {

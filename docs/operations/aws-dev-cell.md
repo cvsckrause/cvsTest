@@ -45,15 +45,16 @@ After deploy, run the migrator once (subnet and security group IDs come from sta
 aws ecs run-task --cluster <ClusterName> --launch-type FARGATE --task-definition <MigratorTaskDefinitionArn> --network-configuration "awsvpcConfiguration={subnets=[<public-subnet>],securityGroups=[<MigratorSecurityGroupId>],assignPublicIp=ENABLED}"
 ```
 
-The UI stays on the workstation. `npm run dev --prefix src/erp-web` proxies `/api` to this cell’s ALB (`ERP_API_ORIGIN` in `src/erp-web/.env.development`). Open `http://127.0.0.1:5173` — the browser must not call the ALB origin directly (Chrome blocks the JSON POST).
+The UI is baked into the API image and served from the ALB root (same origin as `/api/v1`). Open `http://<AlbDnsName>/` in the browser — use **http**, not https (this cell has no ACM certificate). Local Vite (`npm run dev --prefix src/erp-web`) remains optional for UI-only development and still proxies `/api` via `ERP_API_ORIGIN`.
 
 Smoke:
 
-1. `GET /health`
-2. `POST /api/v1/customers` then `POST /api/v1/articles`
-3. `POST /api/v1/sales-orders` with `Idempotency-Key`
-4. `POST /api/v1/sales-orders/{id}/release`
-5. Confirm a delivery and invoice appear after the worker poll
+1. Open `http://<AlbDnsName>/` and confirm the order-entry shell loads
+2. `GET /health`
+3. `POST /api/v1/customers` then `POST /api/v1/articles`
+4. `POST /api/v1/sales-orders` with `Idempotency-Key`
+5. `POST /api/v1/sales-orders/{id}/release`
+6. Confirm a delivery and invoice appear after the worker poll
 
 ## Destroy
 
