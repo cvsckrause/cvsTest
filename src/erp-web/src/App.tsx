@@ -3,8 +3,9 @@ import type { FormEvent } from 'react'
 import './App.css'
 import { erpApi } from './api'
 import type { Article, Customer, OrderLine, SalesOrder } from './api'
+import { createId } from './id'
 
-const initialOrderNumber = `SO-${crypto.randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase()}`
+const initialOrderNumber = `SO-${createId().replaceAll('-', '').slice(0, 8).toUpperCase()}`
 type WorkflowStep = 'capture' | 'release' | 'deliver' | 'invoice'
 
 function App() {
