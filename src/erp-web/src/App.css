@@ -472,6 +472,45 @@ kbd {
   font-size: 12px;
 }
 
+.lager-workspace .document {
+  display: grid;
+  gap: 22px;
+  align-content: start;
+}
+
+.stock-row,
+.movement-row {
+  grid-template-columns: minmax(0, 2.2fr) 0.7fr 0.8fr 0.8fr 0.8fr;
+}
+
+.movement-row {
+  grid-template-columns: 1.1fr 1fr minmax(0, 1.2fr) 0.7fr 0.7fr 1fr;
+}
+
+.receipt-form {
+  padding: 0 18px 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.receipt-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.receipt-form input,
+.receipt-form select {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+}
+
 @media (max-width: 940px) {
   .app-shell {
     grid-template-columns: 64px minmax(0, 1fr);

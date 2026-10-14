@@ -29,6 +29,40 @@ export type SalesOrder = {
   lines: OrderLine[]
 }
 
+export type StockBalanceRow = {
+  articleId: string
+  sku: string
+  name: string
+  warehouseCode: string
+  onHand: number
+  reserved: number
+  available: number
+}
+
+export type StockMovementRow = {
+  id: string
+  articleId: string
+  sku: string
+  name: string
+  warehouseCode: string
+  quantity: number
+  movementType: string
+  reference: string | null
+  createdBy: string
+  occurredAt: string
+}
+
+export type StockReceipt = {
+  id: string
+  articleId: string
+  sku: string
+  warehouseCode: string
+  quantity: number
+  reference: string | null
+  occurredAt: string
+  replayed: boolean
+}
+
 const baseUrl = import.meta.env.VITE_API_URL ?? '/api/v1'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -56,6 +90,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const erpApi = {
   customers: () => request<Customer[]>('/customers'),
   articles: () => request<Article[]>('/articles'),
+  stock: () => request<StockBalanceRow[]>('/stock'),
+  stockMovements: (limit = 50) => request<StockMovementRow[]>(`/stock/movements?limit=${limit}`),
+  createStockReceipt: (articleId: string, quantity: number, warehouseCode: string, reference?: string) =>
+    request<StockReceipt>('/stock/receipts', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': createId() },
+      body: JSON.stringify({
+        articleId,
+        quantity,
+        warehouseCode,
+        reference: reference?.trim() ? reference.trim() : null,
+      }),
+    }),
   createOrder: (customerId: string, orderNumber: string, lines: OrderLine[]) =>
     request<SalesOrder>('/sales-orders', {
       method: 'POST',

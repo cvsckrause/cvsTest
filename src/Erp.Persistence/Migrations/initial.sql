@@ -374,5 +374,49 @@ BEGIN
     VALUES ('20261013130016_InitialTradingSchema', '10.0.4');
     END IF;
 END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261014094245_AddStockMovements') THEN
+    CREATE TABLE erp.stock_movements (
+        "Id" uuid NOT NULL,
+        "TenantId" uuid NOT NULL,
+        "ArticleId" uuid NOT NULL,
+        "WarehouseCode" character varying(40) NOT NULL,
+        "Quantity" numeric(18,4) NOT NULL,
+        "MovementType" character varying(40) NOT NULL,
+        "Reference" character varying(120),
+        "CreatedBy" character varying(200) NOT NULL,
+        "OccurredAt" timestamp with time zone NOT NULL,
+        CONSTRAINT "PK_stock_movements" PRIMARY KEY ("Id")
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261014094245_AddStockMovements') THEN
+    CREATE INDEX "IX_stock_movements_TenantId_OccurredAt" ON erp.stock_movements ("TenantId", "OccurredAt");
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261014094245_AddStockMovements') THEN
+    ALTER TABLE erp."stock_movements" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE erp."stock_movements" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON erp."stock_movements"
+    USING ("TenantId" = current_setting('app.tenant_id', true)::uuid)
+    WITH CHECK ("TenantId" = current_setting('app.tenant_id', true)::uuid);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261014094245_AddStockMovements') THEN
+    INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+    VALUES ('20261014094245_AddStockMovements', '10.0.4');
+    END IF;
+END $EF$;
 COMMIT;
 
