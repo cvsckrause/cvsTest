@@ -50,6 +50,8 @@ app.Use(async (context, next) =>
     await next();
 });
 app.UseCors();
+app.UseDefaultFiles();
+app.UseStaticFiles();
 if (authenticationEnabled)
 {
     app.UseAuthentication();
@@ -241,6 +243,7 @@ api.MapPost("/sales-orders/{id:guid}/release", async (
     return Results.Ok(ToResponse(order));
 });
 
+app.MapFallbackToFile("index.html");
 app.Run();
 
 static Guid ParseTenant(ClaimsPrincipal user, IConfiguration configuration)

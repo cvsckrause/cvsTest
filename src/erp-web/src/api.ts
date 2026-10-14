@@ -1,3 +1,5 @@
+import { createId } from './id'
+
 export type Customer = {
   id: string
   number: string
@@ -40,7 +42,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       },
     })
   } catch {
-    throw new Error('API nicht erreichbar. Vite neu starten und die Seite unter http://127.0.0.1:5173 neu laden.')
+    throw new Error('API nicht erreichbar. Seite neu laden oder prüfen, ob die ERP-API läuft.')
   }
 
   if (!response.ok) {
@@ -57,7 +59,7 @@ export const erpApi = {
   createOrder: (customerId: string, orderNumber: string, lines: OrderLine[]) =>
     request<SalesOrder>('/sales-orders', {
       method: 'POST',
-      headers: { 'Idempotency-Key': crypto.randomUUID() },
+      headers: { 'Idempotency-Key': createId() },
       body: JSON.stringify({
         customerId,
         orderNumber,
@@ -67,6 +69,6 @@ export const erpApi = {
   releaseOrder: (id: string) =>
     request<SalesOrder>(`/sales-orders/${id}/release`, {
       method: 'POST',
-      headers: { 'Idempotency-Key': crypto.randomUUID() },
+      headers: { 'Idempotency-Key': createId() },
     }),
 }
