@@ -374,5 +374,128 @@ BEGIN
     VALUES ('20261013130016_InitialTradingSchema', '10.0.4');
     END IF;
 END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261014094003_ArticleAddressManagement') THEN
+    ALTER TABLE erp.sales_orders ADD "ShipToAdditionalLine" character varying(240);
+    ALTER TABLE erp.sales_orders ADD "ShipToAddressId" uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000';
+    ALTER TABLE erp.sales_orders ADD "ShipToCity" character varying(120) NOT NULL DEFAULT '';
+    ALTER TABLE erp.sales_orders ADD "ShipToCountryCode" character varying(2) NOT NULL DEFAULT '';
+    ALTER TABLE erp.sales_orders ADD "ShipToName" character varying(240) NOT NULL DEFAULT '';
+    ALTER TABLE erp.sales_orders ADD "ShipToPostalCode" character varying(20) NOT NULL DEFAULT '';
+    ALTER TABLE erp.sales_orders ADD "ShipToStreet" character varying(240) NOT NULL DEFAULT '';
+    ALTER TABLE erp.deliveries ADD "ShipToAdditionalLine" character varying(240);
+    ALTER TABLE erp.deliveries ADD "ShipToCity" character varying(120) NOT NULL DEFAULT '';
+    ALTER TABLE erp.deliveries ADD "ShipToCountryCode" character varying(2) NOT NULL DEFAULT '';
+    ALTER TABLE erp.deliveries ADD "ShipToName" character varying(240) NOT NULL DEFAULT '';
+    ALTER TABLE erp.deliveries ADD "ShipToPostalCode" character varying(20) NOT NULL DEFAULT '';
+    ALTER TABLE erp.deliveries ADD "ShipToStreet" character varying(240) NOT NULL DEFAULT '';
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261014094003_ArticleAddressManagement') THEN
+    CREATE TABLE erp.addresses (
+        "Id" uuid NOT NULL,
+        "TenantId" uuid NOT NULL,
+        "Name" character varying(240) NOT NULL,
+        "Street" character varying(240) NOT NULL,
+        "PostalCode" character varying(20) NOT NULL,
+        "City" character varying(120) NOT NULL,
+        "CountryCode" character varying(2) NOT NULL,
+        "AdditionalLine" character varying(240),
+        CONSTRAINT "PK_addresses" PRIMARY KEY ("Id")
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261014094003_ArticleAddressManagement') THEN
+    CREATE TABLE erp.customer_addresses (
+        "Id" uuid NOT NULL,
+        "TenantId" uuid NOT NULL,
+        "CustomerId" uuid NOT NULL,
+        "AddressId" uuid NOT NULL,
+        "Role" character varying(40) NOT NULL,
+        CONSTRAINT "PK_customer_addresses" PRIMARY KEY ("Id")
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261014094003_ArticleAddressManagement') THEN
+    CREATE INDEX "IX_addresses_TenantId_Name" ON erp.addresses ("TenantId", "Name");
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261014094003_ArticleAddressManagement') THEN
+    CREATE UNIQUE INDEX "IX_customer_addresses_TenantId_CustomerId_AddressId_Role" ON erp.customer_addresses ("TenantId", "CustomerId", "AddressId", "Role");
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261014094003_ArticleAddressManagement') THEN
+    CREATE INDEX "IX_customer_addresses_TenantId_CustomerId_Role" ON erp.customer_addresses ("TenantId", "CustomerId", "Role");
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261014094003_ArticleAddressManagement') THEN
+    INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+    VALUES ('20261014094003_ArticleAddressManagement', '10.0.4');
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261014094245_AddStockMovements') THEN
+    CREATE TABLE erp.stock_movements (
+        "Id" uuid NOT NULL,
+        "TenantId" uuid NOT NULL,
+        "ArticleId" uuid NOT NULL,
+        "WarehouseCode" character varying(40) NOT NULL,
+        "Quantity" numeric(18,4) NOT NULL,
+        "MovementType" character varying(40) NOT NULL,
+        "Reference" character varying(120),
+        "CreatedBy" character varying(200) NOT NULL,
+        "OccurredAt" timestamp with time zone NOT NULL,
+        CONSTRAINT "PK_stock_movements" PRIMARY KEY ("Id")
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261014094245_AddStockMovements') THEN
+    CREATE INDEX "IX_stock_movements_TenantId_OccurredAt" ON erp.stock_movements ("TenantId", "OccurredAt");
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261014094245_AddStockMovements') THEN
+    ALTER TABLE erp."stock_movements" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE erp."stock_movements" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON erp."stock_movements"
+    USING ("TenantId" = current_setting('app.tenant_id', true)::uuid)
+    WITH CHECK ("TenantId" = current_setting('app.tenant_id', true)::uuid);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261014094245_AddStockMovements') THEN
+    INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+    VALUES ('20261014094245_AddStockMovements', '10.0.4');
+    END IF;
+END $EF$;
 COMMIT;
 

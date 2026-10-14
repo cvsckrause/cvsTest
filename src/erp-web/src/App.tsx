@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 import { erpApi } from './api'
-import type { Address, Article, Customer, CustomerAddress, OrderLine, SalesOrder } from './api'
+import type { Address, Article, Customer, CustomerAddress, OrderLine, SalesOrder, StockBalanceRow, StockMovementRow } from './api'
 import { createId } from './id'
 
 const initialOrderNumber = `SO-${createId().replaceAll('-', '').slice(0, 8).toUpperCase()}`
 type WorkflowStep = 'capture' | 'release' | 'deliver' | 'invoice'
-type Workspace = 'sales' | 'stamm'
+type Workspace = 'sales' | 'stamm' | 'lager'
 type StammTab = 'articles' | 'addresses'
 
 function App() {
@@ -17,16 +17,23 @@ function App() {
   const [articles, setArticles] = useState<Article[]>([])
   const [addresses, setAddresses] = useState<Address[]>([])
   const [shippingLinks, setShippingLinks] = useState<CustomerAddress[]>([])
+  const [stock, setStock] = useState<StockBalanceRow[]>([])
+  const [movements, setMovements] = useState<StockMovementRow[]>([])
   const [customerId, setCustomerId] = useState('')
   const [shipToAddressId, setShipToAddressId] = useState('')
   const [articleId, setArticleId] = useState('')
   const [quantity, setQuantity] = useState(1)
+  const [receiptArticleId, setReceiptArticleId] = useState('')
+  const [receiptQuantity, setReceiptQuantity] = useState(1)
+  const [receiptWarehouse, setReceiptWarehouse] = useState('MAIN')
+  const [receiptReference, setReceiptReference] = useState('')
   const [orderNumber, setOrderNumber] = useState(initialOrderNumber)
   const [lines, setLines] = useState<OrderLine[]>([])
   const [order, setOrder] = useState<SalesOrder | null>(null)
   const [step, setStep] = useState<WorkflowStep>('capture')
   const [notice, setNotice] = useState('Stammdaten werden geladen …')
   const [busy, setBusy] = useState(false)
+  const receiptIdempotencyKey = useRef<string | null>(null)
 
   const [articleForm, setArticleForm] = useState({ sku: '', name: '', salesPrice: 0, openingStock: 0 })
   const [editingArticleId, setEditingArticleId] = useState<string | null>(null)
@@ -51,6 +58,7 @@ function App() {
         setCustomerId(loadedCustomers[0]?.id ?? '')
         setLinkCustomerId(loadedCustomers[0]?.id ?? '')
         setArticleId(loadedArticles[0]?.id ?? '')
+        setReceiptArticleId(loadedArticles[0]?.id ?? '')
         try {
           const loadedAddresses = await erpApi.addresses()
           setAddresses(loadedAddresses)
@@ -83,10 +91,39 @@ function App() {
       .catch((error: Error) => setNotice(`Lieferadressen nicht ladbar: ${error.message}`))
   }, [customerId])
 
+  useEffect(() => {
+    if (workspace !== 'lager') return
+
+    setBusy(true)
+    Promise.all([erpApi.stock(), erpApi.stockMovements()])
+      .then(([loadedStock, loadedMovements]) => {
+        setStock(loadedStock)
+        setMovements(loadedMovements)
+        setNotice('Lager bereit')
+      })
+      .catch((error: Error) => setNotice(error.message))
+      .finally(() => setBusy(false))
+  }, [workspace])
+
   const netAmount = useMemo(
     () => lines.reduce((total, line) => total + line.quantity * line.unitPrice, 0),
     [lines],
   )
+
+  function openSales() {
+    setWorkspace('sales')
+    setNotice('Vertrieb')
+  }
+
+  function openStamm() {
+    setWorkspace('stamm')
+    setNotice('Stammdaten: Artikel und Adressen verwalten.')
+  }
+
+  function openLager() {
+    setWorkspace('lager')
+    setNotice('Lager wird geladen …')
+  }
 
   function addLine(event: FormEvent) {
     event.preventDefault()
@@ -165,6 +202,7 @@ function App() {
     const loadedArticles = await erpApi.articles()
     setArticles(loadedArticles)
     setArticleId((current) => loadedArticles.some((item) => item.id === current) ? current : (loadedArticles[0]?.id ?? ''))
+    setReceiptArticleId((current) => loadedArticles.some((item) => item.id === current) ? current : (loadedArticles[0]?.id ?? ''))
   }
 
   async function refreshAddresses() {
@@ -193,6 +231,54 @@ function App() {
       setBusy(false)
     }
   }
+
+  async function bookReceipt(event: FormEvent) {
+    event.preventDefault()
+    if (!receiptArticleId || receiptQuantity <= 0) {
+      setNotice('Artikel und positive Menge sind für den Wareneingang erforderlich.')
+      return
+    }
+
+    if (!receiptIdempotencyKey.current) {
+      receiptIdempotencyKey.current = createId()
+    }
+
+    setBusy(true)
+    try {
+      const receipt = await erpApi.createStockReceipt(
+        receiptArticleId,
+        receiptQuantity,
+        receiptWarehouse || 'MAIN',
+        receiptReference,
+        receiptIdempotencyKey.current,
+      )
+      // Booking succeeded — never reuse this key for a new intentional receipt.
+      receiptIdempotencyKey.current = null
+      const bookedNotice = receipt.replayed
+        ? `Wareneingang ${receipt.sku} bereits gebucht (Idempotenz).`
+        : `Wareneingang ${receipt.quantity.toLocaleString('de-DE')} × ${receipt.sku} gebucht.`
+
+      try {
+        const [loadedStock, loadedMovements] = await Promise.all([erpApi.stock(), erpApi.stockMovements()])
+        setStock(loadedStock)
+        setMovements(loadedMovements)
+        setReceiptQuantity(1)
+        setReceiptReference('')
+        setNotice(bookedNotice)
+      } catch (refreshError) {
+        setNotice(
+          `${bookedNotice} Anzeige konnte nicht aktualisiert werden: ${
+            refreshError instanceof Error ? refreshError.message : 'unbekannter Fehler'
+          }`,
+        )
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Wareneingang fehlgeschlagen.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
 
   async function saveAddress(event: FormEvent) {
     event.preventDefault()
@@ -270,15 +356,15 @@ function App() {
       <aside className="rail">
         <div className="product-mark" aria-label="Northstar ERP">N</div>
         <nav aria-label="Hauptnavigation">
-          <button className={`nav-item${workspace === 'sales' ? ' active' : ''}`} title="Vertrieb" onClick={() => setWorkspace('sales')}><span>V</span>Vertrieb</button>
-          <button className={`nav-item${workspace === 'stamm' ? ' active' : ''}`} title="Stammdaten" onClick={() => { setWorkspace('stamm'); setNotice('Stammdaten: Artikel und Adressen verwalten.') }}><span>S</span>Stamm</button>
-          <button className="nav-item" title="Lager" onClick={() => setNotice('Lagerbuchungen laufen über die Freigabe. Eine eigene Lager-Maske gibt es in dieser Scheibe nicht.')}><span>L</span>Lager</button>
+          <button className={`nav-item${workspace === 'sales' ? ' active' : ''}`} title="Vertrieb" onClick={openSales}><span>V</span>Vertrieb</button>
+          <button className={`nav-item${workspace === 'stamm' ? ' active' : ''}`} title="Stammdaten" onClick={openStamm}><span>S</span>Stamm</button>
+          <button className={`nav-item${workspace === 'lager' ? ' active' : ''}`} title="Lager" onClick={openLager}><span>L</span>Lager</button>
           <button className="nav-item" title="Auswertungen" onClick={() => setNotice('Auswertungen sind in dieser Scheibe nicht enthalten.')}><span>A</span>Analyse</button>
         </nav>
         <div className="rail-footer">CK</div>
       </aside>
 
-      <main>
+      <main className={workspace === 'lager' ? 'lager-main' : undefined}>
         {workspace === 'sales' ? (
           <>
             <header className="topbar">
@@ -398,7 +484,7 @@ function App() {
               </aside>
             </section>
           </>
-        ) : (
+        ) : workspace === 'stamm' ? (
           <>
             <header className="topbar">
               <div>
@@ -560,7 +646,96 @@ function App() {
                   <span>{stammTab === 'articles' ? 'Artikel' : 'Adressen'}</span>
                 </div>
                 <p className="action-hint">{notice}</p>
-                <button className="secondary" type="button" onClick={() => setWorkspace('sales')}>Zur Auftragserfassung</button>
+                <button className="secondary" type="button" onClick={openSales}>Zur Auftragserfassung</button>
+              </aside>
+            </section>
+          </>
+        ) : (
+          <>
+            <header className="topbar">
+              <div>
+                <p className="breadcrumb">Lager / Bestand</p>
+                <h1>Bestand &amp; Wareneingang</h1>
+              </div>
+              <div className="system-state"><span /> Entwicklung · Nordics</div>
+            </header>
+
+            <section className="workspace lager-workspace">
+              <div className="document">
+                <div className="section-title">
+                  <h2>Bestandübersicht</h2>
+                  <span>{stock.length} Positionen</span>
+                </div>
+                <div className="line-grid" role="table" aria-label="Bestandübersicht">
+                  <div className="grid-row grid-head stock-row" role="row">
+                    <span>Artikel</span><span>Lager</span><span>Verfügbar</span><span>Reserviert</span><span>Bestand</span>
+                  </div>
+                  {stock.map((row) => (
+                    <div className="grid-row stock-row" role="row" key={`${row.articleId}-${row.warehouseCode}`}>
+                      <strong>{row.sku} · {row.name}</strong>
+                      <span>{row.warehouseCode}</span>
+                      <span>{qty(row.available)}</span>
+                      <span>{qty(row.reserved)}</span>
+                      <span>{qty(row.onHand)}</span>
+                    </div>
+                  ))}
+                  {stock.length === 0 && <div className="empty-row">Kein Bestand vorhanden.</div>}
+                </div>
+
+                <div className="section-title">
+                  <h2>Bewegungen</h2>
+                  <span>{movements.length} Einträge</span>
+                </div>
+                <div className="line-grid" role="table" aria-label="Lagerbewegungen">
+                  <div className="grid-row grid-head movement-row" role="row">
+                    <span>Zeit</span><span>Typ</span><span>Artikel</span><span>Lager</span><span>Menge</span><span>Referenz</span>
+                  </div>
+                  {movements.map((movement) => (
+                    <div className="grid-row movement-row" role="row" key={movement.id}>
+                      <span>{formatWhen(movement.occurredAt)}</span>
+                      <span>{movement.movementType === 'GoodsReceipt' ? 'Wareneingang' : movement.movementType}</span>
+                      <strong>{movement.sku}</strong>
+                      <span>{movement.warehouseCode}</span>
+                      <span>{qty(movement.quantity)}</span>
+                      <span>{movement.reference ?? '—'}</span>
+                    </div>
+                  ))}
+                  {movements.length === 0 && <div className="empty-row">Noch keine Bewegungen.</div>}
+                </div>
+              </div>
+
+              <aside className="summary">
+                <div className="summary-heading">
+                  <span className="status">Wareneingang</span>
+                  <span>{receiptWarehouse || 'MAIN'}</span>
+                </div>
+                <form className="receipt-form" onSubmit={bookReceipt}>
+                  <label>
+                    Artikel
+                    <select value={receiptArticleId} onChange={(event) => setReceiptArticleId(event.target.value)}>
+                      <option value="">Artikel wählen</option>
+                      {articles.map((article) => (
+                        <option key={article.id} value={article.id}>{article.sku} · {article.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Lager
+                    <input value={receiptWarehouse} onChange={(event) => setReceiptWarehouse(event.target.value.toUpperCase())} />
+                  </label>
+                  <label>
+                    Menge
+                    <input type="number" min="0.01" step="0.01" value={receiptQuantity} onChange={(event) => setReceiptQuantity(Number(event.target.value))} />
+                  </label>
+                  <label>
+                    Referenz
+                    <input value={receiptReference} onChange={(event) => setReceiptReference(event.target.value)} placeholder="optional" />
+                  </label>
+                  <button className="primary" type="submit" disabled={busy}>{busy ? 'Bucht …' : 'Wareneingang buchen'}</button>
+                </form>
+                <div className="summary-actions">
+                  <p className="action-hint">{notice}</p>
+                </div>
               </aside>
             </section>
           </>
@@ -587,6 +762,17 @@ function stepClass(id: WorkflowStep, current: WorkflowStep, order: SalesOrder | 
 
 function euro(value: number) {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value)
+}
+
+function qty(value: number) {
+  return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 4 }).format(value)
+}
+
+function formatWhen(value: string) {
+  return new Intl.DateTimeFormat('de-DE', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value))
 }
 
 export default App
