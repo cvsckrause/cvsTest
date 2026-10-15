@@ -4,6 +4,7 @@ internal static class Idempotency
 {
     public const string CreateSalesOrder = "CreateSalesOrder";
     public const string ReleaseSalesOrder = "ReleaseSalesOrder";
+    public const string CancelSalesOrder = "CancelSalesOrder";
     public const string StockGoodsReceipt = "StockGoodsReceipt";
 
     public static string? RequireKey(HttpContext context)
@@ -22,6 +23,9 @@ internal static class Idempotency
         if (path.EndsWith("/release", StringComparison.OrdinalIgnoreCase)
             && path.Contains("/sales-orders/", StringComparison.OrdinalIgnoreCase))
             return ReleaseSalesOrder;
+        if (path.EndsWith("/cancel", StringComparison.OrdinalIgnoreCase)
+            && path.Contains("/sales-orders/", StringComparison.OrdinalIgnoreCase))
+            return CancelSalesOrder;
         if (path.EndsWith("/stock/receipts", StringComparison.OrdinalIgnoreCase))
             return StockGoodsReceipt;
 
