@@ -5,8 +5,6 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
 var builder = Host.CreateApplicationBuilder(args);
-var tenantId = builder.Configuration.GetValue<Guid?>("Worker:TenantId")
-    ?? throw new InvalidOperationException("Worker:TenantId is required.");
 var connectionString = builder.Configuration.GetConnectionString("Erp");
 if (string.IsNullOrWhiteSpace(connectionString))
 {
@@ -20,7 +18,25 @@ if (string.IsNullOrWhiteSpace(connectionString))
     }.ConnectionString;
 }
 
-builder.Services.AddSingleton<ITenantContext>(new TenantContext(tenantId, "erp-worker"));
+if (args is ["replay", var rawMessageId])
+{
+    if (!Guid.TryParse(rawMessageId, out var messageId))
+    {
+        throw new InvalidOperationException("Replay requires a message id.");
+    }
+
+    var replayed = await OutboxReplay.ReplayAsync(connectionString, messageId);
+    Console.WriteLine(replayed
+        ? $"Replayed outbox message {messageId}."
+        : $"Outbox message {messageId} is not dead-lettered.");
+    return;
+}
+
+var tenant = new MutableTenantContext();
+builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Worker"));
+builder.Services.AddSingleton(tenant);
+builder.Services.AddSingleton<ITenantContext>(tenant);
+builder.Services.AddSingleton(new WorkerDatabase(connectionString));
 builder.Services.AddDbContextFactory<ErpDbContext>((services, options) => options
     .UseNpgsql(connectionString)
     .AddInterceptors(new TenantConnectionInterceptor(services.GetRequiredService<ITenantContext>())));

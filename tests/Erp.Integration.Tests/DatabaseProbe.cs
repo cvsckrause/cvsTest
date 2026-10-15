@@ -160,13 +160,92 @@ internal sealed class DatabaseProbe(string appConnectionString, string adminConn
                 : throw new InvalidOperationException($"No outbox message for order {salesOrderId}.");
         });
 
+    public Task<string> PayloadAsync(Guid tenantId, Guid messageId) =>
+        WithAppAsync(tenantId, async connection =>
+        {
+            await using var command = new NpgsqlCommand(
+                """
+                select "Payload"
+                from erp.outbox_messages
+                where "Id" = @id and "TenantId" = @tenant
+                """,
+                connection);
+            command.Parameters.AddWithValue("id", messageId);
+            command.Parameters.AddWithValue("tenant", tenantId);
+            return (string)(await command.ExecuteScalarAsync()
+                ?? throw new InvalidOperationException($"No payload for outbox message {messageId}."));
+        });
+
+    public Task ReplacePayloadAsync(Guid tenantId, Guid messageId, string payload) =>
+        WithAppAsync(tenantId, async connection =>
+        {
+            await using var command = new NpgsqlCommand(
+                """
+                update erp.outbox_messages
+                set "Payload" = @payload
+                where "Id" = @id and "TenantId" = @tenant
+                """,
+                connection);
+            command.Parameters.AddWithValue("payload", payload);
+            command.Parameters.AddWithValue("id", messageId);
+            command.Parameters.AddWithValue("tenant", tenantId);
+            var updated = await command.ExecuteNonQueryAsync();
+            if (updated != 1)
+            {
+                throw new InvalidOperationException($"Could not update payload for outbox message {messageId}.");
+            }
+
+            return 0;
+        });
+
+    public Task<(int Attempts, bool DeadLettered)> OutboxStateAsync(Guid tenantId, Guid messageId) =>
+        WithAppAsync(tenantId, async connection =>
+        {
+            await using var command = new NpgsqlCommand(
+                """
+                select "AttemptCount", "DeadLetteredAt" is not null
+                from erp.outbox_messages
+                where "Id" = @id and "TenantId" = @tenant
+                """,
+                connection);
+            command.Parameters.AddWithValue("id", messageId);
+            command.Parameters.AddWithValue("tenant", tenantId);
+            await using var reader = await command.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+            {
+                throw new InvalidOperationException($"No outbox message {messageId}.");
+            }
+
+            return (reader.GetInt32(0), reader.GetBoolean(1));
+        });
+
+    public async Task<(string User, bool Superuser, bool BypassRls)> RoleAsync(string connectionString)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            select current_user, rolsuper, rolbypassrls
+            from pg_roles
+            where rolname = current_user
+            """,
+            connection);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            throw new InvalidOperationException("current_user was not found in pg_roles.");
+        }
+
+        return (reader.GetString(0), reader.GetBoolean(1), reader.GetBoolean(2));
+    }
+
     public Task<int> ClearProcessedAtAsync(Guid tenantId, Guid messageId) =>
         WithAppAsync(tenantId, async connection =>
         {
             await using var command = new NpgsqlCommand(
                 """
                 update erp.outbox_messages
-                set "ProcessedAt" = null
+                set "ProcessedAt" = null, "LeaseUntil" = null
                 where "Id" = @id and "TenantId" = @tenant
                 """,
                 connection);

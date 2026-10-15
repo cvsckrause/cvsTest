@@ -4,12 +4,17 @@ using Erp.BuildingBlocks;
 using Erp.Persistence;
 using Erp.Platform.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace Erp.Worker;
 
 public sealed class Worker(
     IDbContextFactory<ErpDbContext> dbContextFactory,
-    ILogger<Worker> logger) : BackgroundService
+    ILogger<Worker> logger,
+    WorkerDatabase database,
+    MutableTenantContext tenant,
+    IOptions<WorkerOptions> options) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -30,23 +35,22 @@ public sealed class Worker(
 
     internal async Task ProcessBatch(CancellationToken cancellationToken)
     {
-        await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var messages = await db.OutboxMessages
-            .Where(message => message.ProcessedAt == null)
-            .OrderBy(message => message.OccurredAt)
-            .Take(20)
-            .ToListAsync(cancellationToken);
-
-        foreach (var message in messages)
+        var settings = options.Value;
+        var maxAttempts = Math.Max(1, settings.MaxAttempts);
+        foreach (var claimed in await ClaimAsync(Math.Max(1, settings.BatchSize), cancellationToken))
         {
-            if (await db.InboxMessages.AnyAsync(inbox => inbox.MessageId == message.Id, cancellationToken))
-            {
-                message.MarkProcessed();
-                continue;
-            }
-
+            tenant.TenantId = claimed.TenantId;
+            await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
             try
             {
+                var message = await db.OutboxMessages.SingleAsync(item => item.Id == claimed.Id, cancellationToken);
+                if (await db.InboxMessages.AnyAsync(inbox => inbox.MessageId == message.Id, cancellationToken))
+                {
+                    message.MarkProcessed();
+                    await db.SaveChangesAsync(cancellationToken);
+                    continue;
+                }
+
                 if (message.EventType == "erp.sales-order.released.v1")
                 {
                     var released = JsonSerializer.Deserialize<ReleasedOrderPayload>(
@@ -78,12 +82,43 @@ public sealed class Worker(
             }
             catch (Exception exception)
             {
-                message.MarkFailed(exception.Message);
+                db.ChangeTracker.Clear();
+                var message = await db.OutboxMessages.SingleAsync(item => item.Id == claimed.Id, cancellationToken);
+                message.MarkFailed(exception.Message, NextAttemptAt(message.AttemptCount + 1, settings.BaseDelaySeconds), maxAttempts);
                 await db.SaveChangesAsync(cancellationToken);
-                logger.LogWarning(exception, "Failed outbox event {EventId}.", message.Id);
+                logger.LogWarning(exception, "Failed outbox event {EventId}.", claimed.Id);
             }
         }
     }
+
+    private async Task<IReadOnlyList<ClaimedMessage>> ClaimAsync(int batchSize, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(database.ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("select id, tenant_id from erp.claim_outbox(@batch_size)", connection);
+        command.Parameters.AddWithValue("batch_size", batchSize);
+        var claimed = new List<ClaimedMessage>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            claimed.Add(new ClaimedMessage(reader.GetGuid(0), reader.GetGuid(1)));
+        }
+
+        return claimed;
+    }
+
+    private static DateTimeOffset NextAttemptAt(int attempt, int baseDelaySeconds)
+    {
+        if (baseDelaySeconds <= 0)
+        {
+            return DateTimeOffset.UnixEpoch;
+        }
+
+        var multiplier = Math.Pow(2, Math.Max(0, attempt - 1));
+        return DateTimeOffset.UtcNow.AddSeconds(baseDelaySeconds * multiplier);
+    }
+
+    private sealed record ClaimedMessage(Guid Id, Guid TenantId);
 
     private sealed record ReleasedOrderPayload(
         Guid EventId,
