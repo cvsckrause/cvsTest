@@ -495,6 +495,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sales-orders/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SalesOrderResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sales-orders/{id}/release": {
         parameters: {
             query?: never;
@@ -773,6 +810,7 @@ export interface components {
             orderNumber: string;
             /** Format: uuid */
             shipToAddressId: string;
+            warehouseCode?: null | string;
         };
         CreateStockReceiptRequest: {
             /** Format: uuid */
@@ -825,6 +863,7 @@ export interface components {
             /** Format: uuid */
             shipToAddressId: string;
             status: string;
+            warehouseCode: string;
         };
         StockMovementResponse: {
             /** Format: uuid */

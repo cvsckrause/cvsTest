@@ -234,6 +234,12 @@
           "shipToAddressId": {
             "format": "uuid",
             "type": "string"
+          },
+          "warehouseCode": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         },
         "required": [
@@ -415,6 +421,9 @@
           },
           "status": {
             "type": "string"
+          },
+          "warehouseCode": {
+            "type": "string"
           }
         },
         "required": [
@@ -424,6 +433,7 @@
           "shipToAddressId",
           "shipTo",
           "status",
+          "warehouseCode",
           "netAmount",
           "lines"
         ],
@@ -1158,6 +1168,36 @@
           },
           "404": {
             "description": "Not Found"
+          }
+        },
+        "tags": [
+          "Erp.Api"
+        ]
+      }
+    },
+    "/api/v1/sales-orders/{id}/cancel": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesOrderResponse"
+                }
+              }
+            },
+            "description": "OK"
           }
         },
         "tags": [

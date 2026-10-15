@@ -63,6 +63,7 @@ const salesOrder = {
   shipToAddressId: 'address-1',
   shipTo: address,
   status: 'Released',
+  warehouseCode: 'MAIN',
   netAmount: 799,
   lines: [{ articleId: 'article-1', sku: 'BIKE-001', quantity: 1, unitPrice: 799 }],
 }
@@ -250,6 +251,92 @@ test('opens the workspace and document named in the URL', async () => {
   window.dispatchEvent(new PopStateEvent('popstate'))
   expect(await screen.findByRole('heading', { name: 'Artikel bearbeiten' })).toBeInTheDocument()
   expect(screen.getByDisplayValue('BIKE-001')).toBeInTheDocument()
+})
+
+test('sends NEBEN when the warehouse field is neben', async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url.endsWith('/sales-orders') && init?.method === 'POST') {
+      return jsonResponse({ ...salesOrder, status: 'Draft', warehouseCode: 'NEBEN' }, true, 201)
+    }
+    return route(url)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  render(<App />)
+  await screen.findByRole('option', { name: '10000 · Nordrad GmbH' })
+  await screen.findByRole('option', { name: 'Nordrad GmbH · 20095 Hamburg' })
+  fireEvent.change(screen.getByLabelText('Lager'), { target: { value: 'neben' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Position hinzufügen' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Auftrag speichern' }))
+
+  await screen.findByRole('button', { name: 'Auftrag freigeben' })
+  const createCall = fetchMock.mock.calls.find(([requestUrl, requestInit]) =>
+    String(requestUrl).endsWith('/sales-orders') && requestInit?.method === 'POST')
+  expect(createCall).toBeTruthy()
+  const body = JSON.parse(String(createCall?.[1]?.body)) as { warehouseCode: string }
+  expect(body.warehouseCode).toBe('NEBEN')
+})
+
+test('cancels a released order and offers a new one', async () => {
+  window.history.replaceState(null, '', '/sales/order-1')
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url.includes('/cancel') && init?.method === 'POST') {
+      return jsonResponse({ ...salesOrder, status: 'Cancelled' })
+    }
+    return route(url)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  render(<App />)
+  expect(await screen.findByText('Freigegeben')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Stornieren' }))
+
+  expect(await screen.findByText('Storniert')).toBeInTheDocument()
+  expect(screen.getAllByText('Der Auftrag ist storniert. Eine Lieferung wird nicht erzeugt.').length).toBeGreaterThan(0)
+  expect(screen.getByRole('button', { name: 'Neuen Auftrag erfassen' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Auftrag freigeben' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Stornieren' })).not.toBeInTheDocument()
+
+  const cancelCall = fetchMock.mock.calls.find(([requestUrl]) => String(requestUrl).includes('/cancel'))
+  expect(cancelCall).toBeTruthy()
+  expect(new Headers(cancelCall?.[1]?.headers).get('Idempotency-Key')).toBeTruthy()
+})
+
+test('keeps a released order when cancel is rejected', async () => {
+  window.history.replaceState(null, '', '/sales/order-1')
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url.includes('/cancel') && init?.method === 'POST') {
+      return jsonResponse({ detail: 'Delivered orders cannot be cancelled.' }, false, 409)
+    }
+    return route(url)
+  }))
+
+  render(<App />)
+  expect(await screen.findByText('Freigegeben')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Stornieren' }))
+
+  expect((await screen.findAllByText('Delivered orders cannot be cancelled.')).length).toBeGreaterThan(0)
+  expect(screen.getByText('Freigegeben')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Stornieren' })).toBeInTheDocument()
+})
+
+test('hides release and cancel on a cancelled order', async () => {
+  window.history.replaceState(null, '', '/sales/order-1')
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url.includes('/sales-orders/')) return jsonResponse({ ...salesOrder, status: 'Cancelled' })
+    return route(url)
+  }))
+
+  render(<App />)
+  expect(await screen.findByText('Storniert')).toBeInTheDocument()
+  expect(screen.getAllByText('Der Auftrag ist storniert. Eine Lieferung wird nicht erzeugt.').length).toBeGreaterThan(0)
+  expect(screen.getByRole('button', { name: 'Neuen Auftrag erfassen' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Auftrag freigeben' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Stornieren' })).not.toBeInTheDocument()
 })
 
 test('puts the open article into the URL', async () => {

@@ -121,7 +121,13 @@ export const erpApi = {
         reference: reference?.trim() ? reference.trim() : null,
       }),
     }),
-  createOrder: (customerId: string, shipToAddressId: string, orderNumber: string, lines: OrderLine[]) =>
+  createOrder: (
+    customerId: string,
+    shipToAddressId: string,
+    orderNumber: string,
+    lines: OrderLine[],
+    warehouseCode = 'MAIN',
+  ) =>
     request<SalesOrder>('/sales-orders', {
       method: 'POST',
       headers: { 'Idempotency-Key': createId() },
@@ -129,11 +135,17 @@ export const erpApi = {
         customerId,
         shipToAddressId,
         orderNumber,
+        warehouseCode,
         lines: lines.map((line) => ({ articleId: line.articleId, quantity: line.quantity })),
       }),
     }),
   releaseOrder: (id: string) =>
     request<SalesOrder>(`/sales-orders/${id}/release`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': createId() },
+    }),
+  cancelOrder: (id: string) =>
+    request<SalesOrder>(`/sales-orders/${id}/cancel`, {
       method: 'POST',
       headers: { 'Idempotency-Key': createId() },
     }),

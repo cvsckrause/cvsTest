@@ -10,6 +10,8 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
     step,
     orderNumber,
     setOrderNumber,
+    warehouseCode,
+    setWarehouseCode,
     customers,
     articles,
     shippingLinks,
@@ -29,6 +31,7 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
     goTo,
     saveOrder,
     releaseOrder,
+    cancelOrder,
     startNewOrder,
   } = model
 
@@ -51,10 +54,14 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
 
       <section className="workspace">
         <div className="document">
-          <div className="document-head document-head-three">
+          <div className="document-head document-head-order">
             <label>
               Auftragsnummer
               <input value={orderNumber} onChange={(event) => setOrderNumber(event.target.value)} disabled={Boolean(order)} />
+            </label>
+            <label>
+              Lager
+              <input value={warehouseCode} onChange={(event) => setWarehouseCode(event.target.value)} disabled={Boolean(order)} />
             </label>
             <label className="customer-field">
               Kunde
@@ -128,7 +135,7 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
 
         <aside className="summary">
           <div className="summary-heading">
-            <span className={`status ${order?.status === 'Released' ? 'released' : ''}`}>{order?.status === 'Released' ? 'Freigegeben' : order ? 'Gespeichert' : 'Entwurf'}</span>
+            <span className={statusClass(order?.status)}>{statusLabel(order?.status)}</span>
             <span>{orderNumber}</span>
           </div>
           <dl>
@@ -139,14 +146,23 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
           <div className="summary-actions">
             <p className="action-hint">{notice}</p>
             {step === 'capture' && !order && <button className="primary" onClick={saveOrder} disabled={busy}>{busy ? 'Speichert …' : 'Auftrag speichern'}</button>}
-            {(step === 'release' || (order && order.status !== 'Released')) && order?.status !== 'Released' && (
+            {(step === 'release' || (order && order.status !== 'Released')) && order?.status !== 'Released' && order?.status !== 'Cancelled' && (
               <button className="primary" onClick={releaseOrder} disabled={busy || !order}>
                 {order ? 'Auftrag freigeben' : 'Zuerst speichern'}
               </button>
             )}
+            {order && order.status !== 'Cancelled' && (
+              <button className="secondary" type="button" onClick={cancelOrder} disabled={busy}>Stornieren</button>
+            )}
             {order?.status === 'Released' && (
               <>
                 <p className="released-note">Bestand reserviert. Lieferung und Rechnung erzeugt der Worker im Hintergrund — in dieser Scheibe gibt es keine weiteren Masken.</p>
+                <button className="secondary" type="button" onClick={startNewOrder}>Neuen Auftrag erfassen</button>
+              </>
+            )}
+            {order?.status === 'Cancelled' && (
+              <>
+                <p className="released-note">Der Auftrag ist storniert. Eine Lieferung wird nicht erzeugt.</p>
                 <button className="secondary" type="button" onClick={startNewOrder}>Neuen Auftrag erfassen</button>
               </>
             )}
@@ -160,6 +176,19 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
       </section>
     </>
   )
+}
+
+function statusLabel(status?: string) {
+  if (status === 'Released') return 'Freigegeben'
+  if (status === 'Cancelled') return 'Storniert'
+  if (status) return 'Gespeichert'
+  return 'Entwurf'
+}
+
+function statusClass(status?: string) {
+  if (status === 'Released') return 'status released'
+  if (status === 'Cancelled') return 'status cancelled'
+  return 'status'
 }
 
 function stepClass(id: SalesModel['step'], current: SalesModel['step'], order: SalesOrder | null) {
