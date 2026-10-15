@@ -168,6 +168,8 @@ Der ERP-Kern sollte aus klar getrennten Domänen bestehen.
 
 • Lieferantenbewertung
 
+Der erste Umsetzungsschnitt ist Roadmap E-1 (festgelegt am 15. Oktober 2026): Lieferant, Bestellung mit Positionen aus dem Artikelstamm, Wareneingang von Hand aus dieser Bestellung, optionale Charge mit Einstandspreis je Basiseinheit, und die Marge dieser Charge auf der Auftragsposition. Der Versand der Bestellung per E-Mail beginnt, sobald ein Beleg existiert. ZUGFeRD bleibt Epic E-2.
+
 ## Warenwirtschaft
 
 • Bestände
