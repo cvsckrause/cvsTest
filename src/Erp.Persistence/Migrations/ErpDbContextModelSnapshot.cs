@@ -426,6 +426,9 @@ namespace Erp.Persistence.Migrations
                     b.Property<int>("AttemptCount")
                         .HasColumnType("integer");
 
+                    b.Property<DateTimeOffset?>("DeadLetteredAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("EventType")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -433,6 +436,12 @@ namespace Erp.Persistence.Migrations
 
                     b.Property<string>("LastError")
                         .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("LeaseUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset>("OccurredAt")
                         .HasColumnType("timestamp with time zone");

@@ -70,6 +70,9 @@ public sealed class OutboxMessage : ITenantEntity
     public string Payload { get; private set; } = string.Empty;
     public DateTimeOffset OccurredAt { get; private set; }
     public DateTimeOffset? ProcessedAt { get; private set; }
+    public DateTimeOffset? NextAttemptAt { get; private set; }
+    public DateTimeOffset? LeaseUntil { get; private set; }
+    public DateTimeOffset? DeadLetteredAt { get; private set; }
     public int AttemptCount { get; private set; }
     public string? LastError { get; private set; }
 
@@ -81,12 +84,25 @@ public sealed class OutboxMessage : ITenantEntity
         DateTimeOffset occurredAt) =>
         new(tenantId, eventType, payload, eventId, occurredAt);
 
-    public void MarkProcessed() => ProcessedAt = DateTimeOffset.UtcNow;
+    public void MarkProcessed()
+    {
+        ProcessedAt = DateTimeOffset.UtcNow;
+        LeaseUntil = null;
+    }
 
-    public void MarkFailed(string error)
+    public void MarkFailed(string error, DateTimeOffset nextAttemptAt, int maxAttempts)
     {
         AttemptCount++;
         LastError = error;
+        LeaseUntil = null;
+        if (AttemptCount >= maxAttempts)
+        {
+            DeadLetteredAt = DateTimeOffset.UtcNow;
+            NextAttemptAt = null;
+            return;
+        }
+
+        NextAttemptAt = nextAttemptAt;
     }
 }
 

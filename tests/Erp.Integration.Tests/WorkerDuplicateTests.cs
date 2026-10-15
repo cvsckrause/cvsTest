@@ -43,7 +43,7 @@ public sealed class WorkerDuplicateTests(PostgresFixture fixture)
         var invoiceNumber = "INV-" + orderNumber;
         Assert.Equal(0, await fixture.Probe.CountDeliveriesAsync(fixture.TenantA, deliveryNumber));
 
-        await OutboxProcessor.ProcessOnceAsync(fixture.AppConnectionString, fixture.TenantA);
+        await OutboxProcessor.ProcessOnceAsync(fixture.WorkerConnectionString);
 
         var messageId = await fixture.Probe.OutboxIdForOrderAsync(fixture.TenantA, order.Id);
         Assert.Equal(1, await fixture.Probe.CountDeliveriesAsync(fixture.TenantA, deliveryNumber));
@@ -51,7 +51,7 @@ public sealed class WorkerDuplicateTests(PostgresFixture fixture)
         Assert.Equal(1, await fixture.Probe.CountInboxAsync(messageId));
 
         Assert.Equal(1, await fixture.Probe.ClearProcessedAtAsync(fixture.TenantA, messageId));
-        await OutboxProcessor.ProcessOnceAsync(fixture.AppConnectionString, fixture.TenantA);
+        await OutboxProcessor.ProcessOnceAsync(fixture.WorkerConnectionString);
 
         Assert.Equal(1, await fixture.Probe.CountDeliveriesAsync(fixture.TenantA, deliveryNumber));
         Assert.Equal(1, await fixture.Probe.CountInvoicesAsync(fixture.TenantA, invoiceNumber));

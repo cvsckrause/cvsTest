@@ -28,6 +28,7 @@ public sealed class PostgresFixture : IAsyncLifetime
     public TenantGraph SeedA { get; private set; }
     public TenantGraph SeedB { get; private set; }
     public string AppConnectionString { get; private set; } = string.Empty;
+    public string WorkerConnectionString { get; private set; } = string.Empty;
     internal DatabaseProbe Probe { get; private set; } = null!;
 
     public async Task InitializeAsync()
@@ -50,12 +51,18 @@ public sealed class PostgresFixture : IAsyncLifetime
             Password = "erp_app"
         };
         AppConnectionString = appBuilder.ConnectionString;
+        var workerBuilder = new NpgsqlConnectionStringBuilder(adminConnectionString)
+        {
+            Username = "erp_worker",
+            Password = "erp_worker"
+        };
+        WorkerConnectionString = workerBuilder.ConnectionString;
         Probe = new DatabaseProbe(AppConnectionString, adminConnectionString);
         _factory = CreateFactory(AppConnectionString);
 
         SeedA = await SeedTenantAsync(TenantA, "A");
         SeedB = await SeedTenantAsync(TenantB, "B");
-        await OutboxProcessor.ProcessOnceAsync(AppConnectionString, TenantA);
+        await OutboxProcessor.ProcessOnceAsync(WorkerConnectionString);
     }
 
     internal ApiSession OpenSession(Guid tenantId) =>
@@ -182,6 +189,7 @@ public sealed class PostgresFixture : IAsyncLifetime
             grant usage on schema erp to erp_app;
             grant select, insert, update, delete on all tables in schema erp to erp_app;
             grant usage, select on all sequences in schema erp to erp_app;
+            alter role erp_worker login password 'erp_worker';
             """,
             connection);
         await command.ExecuteNonQueryAsync();
