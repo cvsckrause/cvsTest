@@ -113,6 +113,10 @@ export function createCognitoAdapter(config: CognitoConfig): AuthAdapter {
   return {
     mode: 'cognito',
     async ensureSession() {
+      if (tokens?.accessToken) {
+        return sessionFromTokens()
+      }
+
       const callback = parseCallback(window.location.search)
       if (callback) {
         const pending = readPending()

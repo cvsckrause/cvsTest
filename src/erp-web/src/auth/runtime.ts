@@ -19,10 +19,22 @@ export async function bootstrapAuth(
   loadConfig: typeof loadAuthConfig = loadAuthConfig,
   select: typeof selectAuthAdapter = selectAuthAdapter,
 ): Promise<{ adapter: AuthAdapter; session: AuthSession }> {
-  const config = await loadConfig()
-  adapter = select(config)
-  session = await adapter.ensureSession()
-  return { adapter, session }
+  // React StrictMode remounts effects in development; reuse a completed bootstrap so a
+  // one-time OAuth code exchange is not discarded with a fresh adapter.
+  if (adapter && session) {
+    return { adapter, session }
+  }
+
+  try {
+    const config = await loadConfig()
+    adapter = select(config)
+    session = await adapter.ensureSession()
+    return { adapter, session }
+  } catch (error) {
+    adapter = null
+    session = null
+    throw error
+  }
 }
 
 export async function authHeaders(): Promise<Record<string, string>> {

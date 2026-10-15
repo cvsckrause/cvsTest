@@ -1,28 +1,36 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { bootstrapAuth, getAuthAdapter } from './auth/runtime'
-import type { AuthSession } from './auth/types'
+import { bootstrapAuth } from './auth/runtime'
+import type { AuthAdapter, AuthSession } from './auth/types'
 import { getBuildInfo } from './buildInfo'
 
 const buildInfo = getBuildInfo()
 
 type GateState =
   | { status: 'loading' }
-  | { status: 'ready'; session: AuthSession }
+  | { status: 'ready'; adapter: AuthAdapter; session: AuthSession }
   | { status: 'error'; message: string }
+
+type Bootstrap = () => Promise<{ adapter: AuthAdapter; session: AuthSession }>
 
 function asErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
 }
 
-export function AuthGate({ children }: { children: ReactNode }) {
+export function AuthGate({
+  children,
+  bootstrap = bootstrapAuth,
+}: {
+  children: ReactNode
+  bootstrap?: Bootstrap
+}) {
   const [state, setState] = useState<GateState>({ status: 'loading' })
 
   useEffect(() => {
     let cancelled = false
-    bootstrapAuth()
-      .then(({ session }) => {
-        if (!cancelled) setState({ status: 'ready', session })
+    bootstrap()
+      .then(({ adapter, session }) => {
+        if (!cancelled) setState({ status: 'ready', adapter, session })
       })
       .catch((error: unknown) => {
         if (!cancelled) {
@@ -35,7 +43,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [bootstrap])
 
   if (state.status === 'loading') {
     return (
@@ -58,8 +66,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
     )
   }
 
-  const adapter = getAuthAdapter()
-  if (adapter.needsLogin(state.session)) {
+  const { adapter, session } = state
+  if (adapter.needsLogin(session)) {
     return (
       <div className="auth-gate">
         <h1>Northstar ERP</h1>
@@ -86,7 +94,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   return (
     <>
       {children}
-      {state.session.mode === 'cognito' ? (
+      {session.mode === 'cognito' ? (
         <button
           type="button"
           className="auth-logout"
