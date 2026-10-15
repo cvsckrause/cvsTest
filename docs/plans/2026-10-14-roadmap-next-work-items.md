@@ -85,6 +85,7 @@ flowchart LR
     R18[R-18 Observability + alarms]:::a
     R19[R-19 Scripted deploy]:::a
     R20[R-20 Idempotency fingerprint]:::b
+    R21[R-21 UI build stamp]:::b
   end
   R01 --> R05
   R04 --> R05
@@ -106,6 +107,8 @@ flowchart LR
   R01 --> R19
   R17 --> R19
   R06 --> R20
+  R10 --> R21
+  R19 --> R21
   classDef a fill:#dbeafe,stroke:#1d4ed8
   classDef b fill:#fef3c7,stroke:#b45309
 ```
@@ -122,6 +125,7 @@ flowchart LR
 | 8 | R-17 DB roles + seed split | R-08 UI PKCE login *(after R-07 + R-09)* |
 | 9 | R-18 Observability + alarms | R-16 Invoice DACH minimum |
 | 10 | R-19 Scripted deploy | R-20 Idempotency fingerprint |
+| 11 | | R-21 UI build stamp *(can ship early; soft depends on R-10 shell)* |
 
 Sync points: R-02 merges before any other `Program.cs` change. R-11 merges before R-12. R-07, R-08, and R-09 ship together to the AWS cell, with a cost-gate update for R-09.
 
@@ -492,6 +496,24 @@ Sync points: R-02 merges before any other `Program.cs` change. R-11 merges befor
 - Test: the same key with a different quantity returns 422.
 - Expired records get deleted.
 
+### R-21 — Show a build stamp (version, built-at, git SHA) in the UI
+
+`lane:B` `priority:P2` `size:S` `area:web,infra` `type:feature` — depends on: none (best with R-10 shell; include in R-19 smoke)
+
+**Context.** The UI is baked into the API image and served from the ALB. After an ECS roll it is hard to tell which commit or build is online. Local Vite and the AWS cell can silently diverge.
+
+**Scope.**
+- At the Vite production build inside `src/Erp.Api/Dockerfile`, inject `VITE_APP_VERSION` (from `src/erp-web/package.json`), `VITE_APP_BUILD_TIME` (UTC ISO), and `VITE_APP_GIT_SHA` (short commit, build-arg).
+- Show a muted stamp in the shell status bar, e.g. `v0.1.0 · 2026-10-15 13:42 UTC · a1b2c3d`.
+- Local `npm run dev` falls back to `dev` / `local` / `unknown` so the stamp never crashes the shell.
+- Document the stamp in `docs/operations/aws-dev-cell.md` smoke step 1 (confirm it is present and changes after a redeploy).
+
+**Acceptance.**
+- After an API image rebuild and ECS roll, the ALB UI shows a non-empty version, UTC built-at, and short SHA that match the build that was pushed.
+- A Vitest test asserts the stamp renders from the injected env values (or documented fallbacks).
+
+**Out of scope.** Semver release process, `GET /version` API (optional follow-up), CloudFront cache busting beyond a normal image roll.
+
 ---
 
 ## Wave 3 — next business milestone (epics)
@@ -516,6 +538,7 @@ The current wave order stays. These notes record where the meeting feedback land
 | --- | --- |
 | Shareable URL for the current view | R-10 |
 | Find an order that was just created | R-13 (the order list and its status filter) |
+| Visible UI build identity on the AWS cell (version / built-at / git SHA) | R-21 |
 | Supplier, purchase order from the article master, hand-transferred goods receipt, optional batch and cost price, sales-line margin from the chosen batch | E-1 |
 | ZUGFeRD / XRechnung invoice | E-2, unchanged |
 | Email a purchase order | After a document exists; not part of the first E-1 cut |

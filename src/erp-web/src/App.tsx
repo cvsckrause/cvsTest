@@ -3,7 +3,10 @@ import type { FormEvent } from 'react'
 import './App.css'
 import { erpApi } from './api'
 import type { Address, Article, Customer, CustomerAddress, OrderLine, SalesOrder, StockBalanceRow, StockMovementRow } from './api'
+import { getBuildInfo } from './buildInfo'
 import { createId } from './id'
+
+const buildInfo = getBuildInfo()
 
 const initialOrderNumber = `SO-${createId().replaceAll('-', '').slice(0, 8).toUpperCase()}`
 type WorkflowStep = 'capture' | 'release' | 'deliver' | 'invoice'
@@ -765,7 +768,12 @@ function App() {
 
         <footer className="statusbar" aria-live="polite">
           <span>{notice}</span>
-          <span>Mandant 100 · Hauptlager MAIN</span>
+          <span className="statusbar-meta">
+            <span>Mandant 100 · Hauptlager MAIN</span>
+            <span className="build-stamp" title="Build identity" aria-label={`Build ${buildInfo.label}`}>
+              {buildInfo.label}
+            </span>
+          </span>
         </footer>
       </main>
     </div>

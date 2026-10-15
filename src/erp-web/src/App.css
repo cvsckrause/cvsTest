@@ -530,10 +530,24 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
   color: #647683;
   background: #e5eaee;
   border-top: 1px solid #c6d0d8;
   font-size: 12px;
+}
+
+.statusbar-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.build-stamp {
+  color: #7a8a96;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .lager-workspace .document {
