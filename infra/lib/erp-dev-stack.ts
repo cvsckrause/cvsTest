@@ -168,6 +168,7 @@ export class ErpDevStack extends cdk.Stack {
       Database__Name: 'erp_dev',
       Database__Username: 'erp',
       Worker__TenantId: '11111111-1111-1111-1111-111111111111',
+      DevelopmentIdentity__Enabled: 'true',
       DevelopmentIdentity__TenantId: '11111111-1111-1111-1111-111111111111',
       DevelopmentIdentity__UserId: 'local-developer',
     }

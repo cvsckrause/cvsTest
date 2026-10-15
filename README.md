@@ -32,7 +32,7 @@ npm run dev --prefix src/erp-web
 - UI (AWS cell): `http://<AlbDnsName>/` — same origin as the API; no Vite required
 - OpenAPI: `http://localhost:5080/openapi/v1.json`
 
-Local identity uses `DevelopmentIdentity:TenantId`. Cognito PKCE is reserved for the AWS cell.
+Local identity comes from `DevelopmentIdentity` in `appsettings.Development.json` and is used only when authentication is off. Cognito PKCE is reserved for the AWS cell.
 
 ## Tests
 

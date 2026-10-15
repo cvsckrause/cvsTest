@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Erp.Api;
 using Erp.BuildingBlocks;
 using Erp.Persistence;
@@ -10,6 +9,12 @@ var builder = WebApplication.CreateBuilder(args);
 var connectionString = BuildConnectionString(builder.Configuration);
 var cognitoAuthority = builder.Configuration["Authentication:Authority"];
 var authenticationEnabled = !string.IsNullOrWhiteSpace(cognitoAuthority);
+var developmentIdentity = DevelopmentIdentity.FromConfiguration(builder.Configuration);
+if (developmentIdentity.Enabled && !builder.Environment.IsDevelopment() && authenticationEnabled)
+{
+    throw new InvalidOperationException(
+        "DevelopmentIdentity:Enabled is only allowed when the environment is Development or authentication is disabled.");
+}
 
 builder.Services.AddOpenApi();
 builder.Services.AddCors(options =>
@@ -36,6 +41,11 @@ if (authenticationEnabled)
 }
 
 var app = builder.Build();
+if (developmentIdentity.Enabled && !app.Environment.IsDevelopment())
+{
+    app.Logger.LogWarning(
+        "Development identity is enabled outside Development because authentication is disabled. Remove DevelopmentIdentity when authentication is enabled.");
+}
 
 app.Use(async (context, next) =>
 {
@@ -55,13 +65,21 @@ if (authenticationEnabled)
 }
 app.Use(async (context, next) =>
 {
+    if (!context.Request.Path.StartsWithSegments("/api"))
+    {
+        await next();
+        return;
+    }
+
+    var identity = developmentIdentity.Resolve(context.User, authenticationEnabled);
+    if (identity is null)
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return;
+    }
+
     var tenant = context.RequestServices.GetRequiredService<RequestTenantContext>();
-    tenant.Set(
-        ParseTenant(context.User, builder.Configuration),
-        context.User.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? context.User.FindFirstValue("sub")
-            ?? builder.Configuration["DevelopmentIdentity:UserId"]
-            ?? "local-developer");
+    tenant.Set(identity.Value.TenantId, identity.Value.UserId);
     await next();
 });
 
@@ -80,17 +98,6 @@ api.MapSalesEndpoints();
 
 app.MapFallbackToFile("index.html");
 app.Run();
-
-static Guid ParseTenant(ClaimsPrincipal user, IConfiguration configuration)
-{
-    var claim = user.FindFirstValue("custom:tenant_id") ?? user.FindFirstValue("tenant_id");
-    if (Guid.TryParse(claim, out var claimedTenant)) return claimedTenant;
-
-    var configured = configuration["DevelopmentIdentity:TenantId"];
-    if (Guid.TryParse(configured, out var developmentTenant)) return developmentTenant;
-
-    throw new InvalidOperationException("No verified tenant identity is available.");
-}
 
 static string BuildConnectionString(IConfiguration configuration)
 {
