@@ -108,6 +108,7 @@ public sealed class ErpDbContext(
             entity.ToTable("sales_orders");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.OrderNumber).HasMaxLength(40);
+            entity.Property(x => x.WarehouseCode).HasMaxLength(40).HasDefaultValue("MAIN");
             entity.Property(x => x.ShipToName).HasMaxLength(240);
             entity.Property(x => x.ShipToStreet).HasMaxLength(240);
             entity.Property(x => x.ShipToPostalCode).HasMaxLength(20);

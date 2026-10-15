@@ -548,6 +548,13 @@ namespace Erp.Persistence.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("WarehouseCode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasDefaultValue("MAIN");
+
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "OrderNumber")
