@@ -116,8 +116,8 @@ export class ErpDevStack extends cdk.Stack {
     const localUrls = ['http://localhost:5173/', 'http://127.0.0.1:5173/']
     const userPoolDomain = userPool.addDomain('HostedUi', {
       cognitoDomain: {
-        // Cognito domain prefixes are globally unique; account keeps collisions unlikely.
-        domainPrefix: `erp-${environmentName}-${cdk.Stack.of(this).account}`.slice(0, 63).toLowerCase(),
+        // Must be concrete at synth (no unresolved tokens). Keep it unique to this project.
+        domainPrefix: `erp-cvstest-${environmentName}`.slice(0, 63).toLowerCase(),
       },
     })
     const userPoolClient = userPool.addClient('SpaClient', {
