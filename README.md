@@ -51,11 +51,12 @@ GitHub Actions workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) r
 
 ### Branch protection on `main`
 
-`main` is protected by the repository ruleset **Protect main** (block deletions, block force-pushes, require a pull request).
+`main` is protected by the repository ruleset **Protect main**:
 
-After this CI workflow has reported at least once, add **required status checks** for `backend`, `web`, and `infra-synth` on that ruleset so a red job blocks merge. Until those checks are required, a PR can still merge with failing CI.
-
-Current posture (acceptable for bootstrapping CI, not final): PR required, **0** approving reviews, no required status checks yet. Prefer enabling the three checks above before treating Wave 0 as done.
+- Block deletions and force-pushes
+- Require a pull request (0 approving reviews)
+- Require status checks `backend`, `web`, and `infra-synth` (GitHub Actions)
+- Require the branch to be up to date with `main` before merge (`strict_required_status_checks_policy`)
 
 ## AWS
 
