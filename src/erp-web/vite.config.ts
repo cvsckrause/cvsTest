@@ -16,18 +16,12 @@ export default defineConfig(({ mode }) => {
       host: '127.0.0.1',
       port: 5173,
       strictPort: true,
-      proxy: {
-        '/api': {
-          target: apiOrigin,
-          changeOrigin: true,
-          timeout: 60_000,
-        },
-        '/auth-config.json': {
-          target: apiOrigin,
-          changeOrigin: true,
-          timeout: 60_000,
-        },
-      },
+      proxy: Object.fromEntries(
+        ['/api', '/auth-config.json'].map((path) => [
+          path,
+          { target: apiOrigin, changeOrigin: true, timeout: 60_000 },
+        ]),
+      ),
     },
     test: {
       environment: 'jsdom',

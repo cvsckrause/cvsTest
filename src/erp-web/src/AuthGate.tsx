@@ -11,6 +11,10 @@ type GateState =
   | { status: 'ready'; session: AuthSession }
   | { status: 'error'; message: string }
 
+function asErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback
+}
+
 export function AuthGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<GateState>({ status: 'loading' })
 
@@ -24,7 +28,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         if (!cancelled) {
           setState({
             status: 'error',
-            message: error instanceof Error ? error.message : 'Anmeldung fehlgeschlagen.',
+            message: asErrorMessage(error, 'Anmeldung fehlgeschlagen.'),
           })
         }
       })
@@ -67,7 +71,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
             void adapter.login().catch((error: unknown) => {
               setState({
                 status: 'error',
-                message: error instanceof Error ? error.message : 'Login fehlgeschlagen.',
+                message: asErrorMessage(error, 'Login fehlgeschlagen.'),
               })
             })
           }}

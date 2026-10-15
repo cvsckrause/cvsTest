@@ -24,9 +24,7 @@ export function createLocalAdapter(): AuthAdapter {
     setTenantId(next) {
       tenantId = next
     },
-    async login() {
-      // Local DevelopmentIdentity — no interactive login.
-    },
+    async login() {},
     async logout() {
       tenantId = null
     },
