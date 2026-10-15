@@ -124,6 +124,28 @@ app.Use(async (context, next) =>
 
 app.MapOpenApi();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+app.MapGet("/auth-config.json", () =>
+{
+    if (!authenticationEnabled)
+    {
+        return Results.Json(new { mode = "local" });
+    }
+
+    var hostedUiDomain = builder.Configuration["Authentication:HostedUiDomain"];
+    if (string.IsNullOrWhiteSpace(hostedUiDomain))
+    {
+        throw new InvalidOperationException(
+            "Authentication:HostedUiDomain is required when authentication is enabled.");
+    }
+
+    return Results.Json(new
+    {
+        mode = "cognito",
+        authority = cognitoAuthority,
+        clientId = cognitoClientId,
+        hostedUiOrigin = $"https://{hostedUiDomain}",
+    });
+});
 
 var api = app.MapGroup("/api/v1");
 if (authenticationEnabled)

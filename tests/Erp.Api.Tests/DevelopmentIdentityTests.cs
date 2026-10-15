@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Erp.Platform.Domain;
@@ -138,6 +139,43 @@ public sealed class DevelopmentIdentityTests
         Assert.Equal(ConfiguredTenant, fixture.Observed.TenantId);
         Assert.Equal("local-developer", fixture.Observed.UserId);
     }
+
+    [Fact]
+    public async Task Auth_config_reports_local_mode_when_authentication_is_disabled()
+    {
+        await using var fixture = ApiFixture.Start(
+            environment: "Development",
+            authenticationEnabled: false,
+            developmentIdentityEnabled: true,
+            configuredTenant: ConfiguredTenant,
+            configuredUserId: "local-developer");
+
+        using var response = await fixture.Client.GetAsync("/auth-config.json");
+        var payload = await response.Content.ReadFromJsonAsync<AuthConfigPayload>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("local", payload?.Mode);
+    }
+
+    [Fact]
+    public async Task Auth_config_reports_cognito_mode_anonymously_when_authentication_is_enabled()
+    {
+        await using var fixture = ApiFixture.Start(
+            environment: "Production",
+            authenticationEnabled: true,
+            developmentIdentityEnabled: false,
+            user: new ClaimsPrincipal(new ClaimsIdentity()));
+
+        using var response = await fixture.Client.GetAsync("/auth-config.json");
+        var payload = await response.Content.ReadFromJsonAsync<AuthConfigPayload>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("cognito", payload?.Mode);
+        Assert.Equal("test-client", payload?.ClientId);
+        Assert.Equal("https://erp-test.auth.eu-north-1.amazoncognito.com", payload?.HostedUiOrigin);
+    }
+
+    private sealed record AuthConfigPayload(string Mode, string? ClientId, string? HostedUiOrigin);
 
     [Fact]
     public async Task Disabled_authentication_outside_development_uses_an_explicit_development_identity()
@@ -286,6 +324,9 @@ internal sealed class ApiFixture : IAsyncDisposable
             "Authentication__Authority",
             authenticationEnabled ? "https://example.invalid/" : "");
         Environment.SetEnvironmentVariable("Authentication__ClientId", authenticationEnabled ? "test-client" : "");
+        Environment.SetEnvironmentVariable(
+            "Authentication__HostedUiDomain",
+            authenticationEnabled ? "erp-test.auth.eu-north-1.amazoncognito.com" : "");
         Environment.SetEnvironmentVariable("Authentication__Audience", "erp-api");
         Environment.SetEnvironmentVariable(
             "DevelopmentIdentity__Enabled",
