@@ -11,7 +11,7 @@ The target production architecture uses private Fargate tasks, multiple Availabi
 
 Deploy one API task, one worker task, and single-AZ RDS PostgreSQL in `eu-north-1`. RDS remains private. To avoid a continuously billed NAT Gateway in this disposable development cell, Fargate tasks may use public subnets and public IPs; security groups admit API traffic only from the ALB and no inbound worker traffic.
 
-CloudFront/WAF and production redundancy are deferred. For this development cell the React UI is baked into the API image and served from the public ALB hostname (HTTP only). CDK applies mandatory project/environment/owner tags, an AWS Budget of **USD 100 / month** (`erp-dev-monthly`), bounded log retention, deletion protection off, and documented teardown.
+CloudFront sits in front of the HTTP ALB and uses the default `*.cloudfront.net` certificate. The ALB security group admits port 80 only from the CloudFront origin-facing prefix list, so the internet cannot call the ALB directly. WAF, a custom domain, and production redundancy stay deferred. The React UI is baked into the API image and served from the CloudFront hostname over HTTPS. `/api/*` is not cached. CDK applies mandatory project/environment/owner tags, an AWS Budget of **USD 100 / month** (`erp-dev-monthly`), bounded log retention, deletion protection off, and documented teardown. CloudFront has no hourly charge, so the idle band stays **USD 55–70 / month**.
 
 ## Consequences
 
