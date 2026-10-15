@@ -18,5 +18,6 @@
     <Project Path="tests/Erp.Architecture.Tests/Erp.Architecture.Tests.csproj" />
     <Project Path="tests/Erp.Persistence.Tests/Erp.Persistence.Tests.csproj" />
     <Project Path="tests/Erp.Domain.Tests/Erp.Domain.Tests.csproj" />
+    <Project Path="tests/Erp.Integration.Tests/Erp.Integration.Tests.csproj" />
   </Folder>
 </Solution>

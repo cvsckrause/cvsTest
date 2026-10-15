@@ -28,7 +28,7 @@ public sealed class Worker(
         }
     }
 
-    private async Task ProcessBatch(CancellationToken cancellationToken)
+    internal async Task ProcessBatch(CancellationToken cancellationToken)
     {
         await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         var messages = await db.OutboxMessages
