@@ -114,6 +114,12 @@ export class ErpDevStack extends cdk.Stack {
     })
 
     const localUrls = ['http://localhost:5173/', 'http://127.0.0.1:5173/']
+    const userPoolDomain = userPool.addDomain('HostedUi', {
+      cognitoDomain: {
+        // Cognito domain prefixes are globally unique; account keeps collisions unlikely.
+        domainPrefix: `erp-${environmentName}-${cdk.Stack.of(this).account}`.slice(0, 63).toLowerCase(),
+      },
+    })
     const userPoolClient = userPool.addClient('SpaClient', {
       generateSecret: false,
       authFlows: { userSrp: true },
@@ -188,6 +194,7 @@ export class ErpDevStack extends cdk.Stack {
         ...databaseEnv,
         Authentication__Authority: `https://cognito-idp.${this.region}.amazonaws.com/${userPool.userPoolId}`,
         Authentication__ClientId: userPoolClient.userPoolClientId,
+        Authentication__HostedUiDomain: userPoolDomain.domainName,
       },
       secrets: {
         Database__Password: ecs.Secret.fromSecretsManager(databaseSecret, 'password'),
@@ -372,6 +379,7 @@ export class ErpDevStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'DistributionDomainName', { value: distribution.distributionDomainName })
     new cdk.CfnOutput(this, 'UserPoolId', { value: userPool.userPoolId })
     new cdk.CfnOutput(this, 'UserPoolClientId', { value: userPoolClient.userPoolClientId })
+    new cdk.CfnOutput(this, 'CognitoDomain', { value: userPoolDomain.domainName })
     new cdk.CfnOutput(this, 'CognitoAuthority', {
       value: `https://cognito-idp.${this.region}.amazonaws.com/${userPool.userPoolId}`,
     })

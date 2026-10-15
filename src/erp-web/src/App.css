@@ -1,3 +1,50 @@
+.auth-gate {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  background:
+    radial-gradient(circle at top left, #d9e6f2 0, transparent 42%),
+    linear-gradient(160deg, #f3f6f9, #e7eef5 55%, #dfe8f1);
+}
+
+.auth-gate h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.auth-gate p {
+  margin: 0;
+  max-width: 28rem;
+  justify-self: center;
+  color: #3d5368;
+}
+
+.auth-error {
+  color: #8a1f1f !important;
+}
+
+.auth-build {
+  font-size: 0.85rem;
+  color: #6a7f93 !important;
+}
+
+.auth-logout {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 20;
+  border: 1px solid #54708a;
+  background: #173652;
+  color: white;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+
 .app-shell {
   min-height: 100vh;
   display: grid;

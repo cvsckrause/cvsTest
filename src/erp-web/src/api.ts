@@ -1,3 +1,4 @@
+import { authHeaders } from './auth/runtime'
 import { createId } from './id'
 
 export type Customer = {
@@ -109,10 +110,12 @@ async function readJson<T>(response: Response, path: string): Promise<T> {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
   try {
+    const authorization = await authHeaders()
     response = await fetch(`${baseUrl}${path}`, {
       ...init,
       headers: {
         'Content-Type': 'application/json',
+        ...authorization,
         ...init?.headers,
       },
     })

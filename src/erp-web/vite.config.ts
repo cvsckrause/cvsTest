@@ -22,6 +22,11 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           timeout: 60_000,
         },
+        '/auth-config.json': {
+          target: apiOrigin,
+          changeOrigin: true,
+          timeout: 60_000,
+        },
       },
     },
     test: {
