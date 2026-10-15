@@ -25,7 +25,7 @@ internal static class SalesEndpoints
             {
                 if (!Enum.TryParse<SalesOrderStatus>(status, ignoreCase: true, out var parsed))
                 {
-                    return Results.BadRequest(new { error = "Status must be Draft or Released." });
+                    return Results.BadRequest(new { error = "Status must be Draft, Released, or Cancelled." });
                 }
 
                 statusFilter = parsed;

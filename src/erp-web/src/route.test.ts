@@ -4,7 +4,9 @@ import { formatRoute, parseRoute } from './route'
 test('names the sales workspace and an open order', () => {
   expect(parseRoute('/')).toEqual({ workspace: 'sales', documentId: null })
   expect(parseRoute('/sales')).toEqual({ workspace: 'sales', documentId: null })
+  expect(parseRoute('/sales/new')).toEqual({ workspace: 'sales', documentId: 'new' })
   expect(parseRoute('/sales/order-1')).toEqual({ workspace: 'sales', documentId: 'order-1' })
+  expect(formatRoute({ workspace: 'sales', documentId: 'new' })).toBe('/sales/new')
   expect(formatRoute({ workspace: 'sales', documentId: 'order-1' })).toBe('/sales/order-1')
 })
 
