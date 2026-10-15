@@ -92,6 +92,9 @@ public sealed class PostgresFixture : IAsyncLifetime
         Environment.SetEnvironmentVariable("ConnectionStrings__Erp", connectionString);
         Environment.SetEnvironmentVariable("Authentication__Authority", "https://example.invalid/");
         Environment.SetEnvironmentVariable("Authentication__ClientId", "test-client");
+        Environment.SetEnvironmentVariable(
+            "Authentication__HostedUiDomain",
+            "erp-test.auth.eu-north-1.amazoncognito.com");
         Environment.SetEnvironmentVariable("Authentication__Audience", "erp-api");
         Environment.SetEnvironmentVariable("DevelopmentIdentity__Enabled", "false");
         Environment.SetEnvironmentVariable("DevelopmentIdentity__TenantId", "");
