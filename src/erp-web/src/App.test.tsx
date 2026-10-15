@@ -55,6 +55,14 @@ const movement = {
   createdBy: 'tester',
   occurredAt: '2026-10-14T09:00:00.000Z',
 }
+const goodsIssue = {
+  ...movement,
+  id: 'movement-2',
+  quantity: 3,
+  movementType: 'GoodsIssue',
+  reference: 'DEL-SO-1001',
+  occurredAt: '2026-10-14T10:00:00.000Z',
+}
 
 const salesOrder = {
   id: 'order-1',
@@ -103,7 +111,7 @@ function route(url: string) {
   if (url.includes('/addresses')) return jsonResponse([address])
   if (url.includes('/customers')) return jsonResponse([customer])
   if (url.includes('/articles')) return jsonResponse([article])
-  if (url.includes('/stock/movements')) return jsonResponse([movement])
+  if (url.includes('/stock/movements')) return jsonResponse([goodsIssue, movement])
   if (url.includes('/stock')) return jsonResponse([stockRow])
   return jsonResponse({ error: 'not found' }, false, 404)
 }
@@ -197,6 +205,7 @@ test('opens the lager workspace from the nav', async () => {
 
   const movementTable = screen.getByRole('table', { name: 'Lagerbewegungen' })
   expect(within(movementTable).getByText('Wareneingang')).toBeInTheDocument()
+  expect(within(movementTable).getByText('Warenausgang')).toBeInTheDocument()
   expect(within(movementTable).getByText('WE-1')).toBeInTheDocument()
 })
 
