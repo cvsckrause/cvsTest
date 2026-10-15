@@ -27,6 +27,7 @@ public sealed class ErpDbContext(
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
+    public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -192,6 +193,15 @@ public sealed class ErpDbContext(
             entity.Property(x => x.Operation).HasMaxLength(100);
             entity.HasIndex(x => new { x.TenantId, x.Operation, x.Key }).IsUnique();
             entity.HasQueryFilter(x => x.TenantId == tenantContext.TenantId);
+        });
+
+        modelBuilder.Entity<TenantMembership>(entity =>
+        {
+            entity.ToTable("tenant_memberships");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.UserId).HasMaxLength(200);
+            entity.HasIndex(x => new { x.UserId, x.TenantId }).IsUnique();
+            entity.HasIndex(x => x.UserId);
         });
     }
 }

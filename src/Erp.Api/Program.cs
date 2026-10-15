@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Erp.Api;
 using Erp.BuildingBlocks;
 using Erp.Persistence;
@@ -8,7 +9,13 @@ using Npgsql;
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = BuildConnectionString(builder.Configuration);
 var cognitoAuthority = builder.Configuration["Authentication:Authority"];
+var cognitoClientId = builder.Configuration["Authentication:ClientId"];
 var authenticationEnabled = !string.IsNullOrWhiteSpace(cognitoAuthority);
+if (authenticationEnabled && string.IsNullOrWhiteSpace(cognitoClientId))
+{
+    throw new InvalidOperationException("Authentication:ClientId is required when authentication is enabled.");
+}
+
 var developmentIdentity = DevelopmentIdentity.FromConfiguration(builder.Configuration);
 if (developmentIdentity.Enabled && !builder.Environment.IsDevelopment() && authenticationEnabled)
 {
@@ -24,6 +31,8 @@ builder.Services.AddCors(options =>
         .WithOrigins(builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? ["http://localhost:5173"])
         .AllowAnyHeader()
         .AllowAnyMethod()));
+builder.Services.AddSingleton(new ErpConnection(connectionString));
+builder.Services.AddScoped<ITenantMemberships, EfTenantMemberships>();
 builder.Services.AddScoped<RequestTenantContext>();
 builder.Services.AddScoped<ITenantContext>(services => services.GetRequiredService<RequestTenantContext>());
 builder.Services.AddDbContext<ErpDbContext>((services, options) => options
@@ -34,11 +43,7 @@ if (authenticationEnabled)
 {
     builder.Services
         .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(options =>
-        {
-            options.Authority = cognitoAuthority;
-            options.Audience = builder.Configuration["Authentication:Audience"];
-        });
+        .AddJwtBearer(options => CognitoAuthentication.Configure(options, cognitoAuthority!, cognitoClientId!));
     builder.Services.AddAuthorization();
 }
 
@@ -74,15 +79,46 @@ app.Use(async (context, next) =>
         return;
     }
 
-    var identity = developmentIdentity.Resolve(context.User, authenticationEnabled);
-    if (identity is null)
+    if (!authenticationEnabled)
+    {
+        var identity = developmentIdentity.Resolve();
+        if (identity is null)
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
+
+        context.RequestServices.GetRequiredService<RequestTenantContext>()
+            .Set(identity.Value.TenantId, identity.Value.UserId);
+        await next();
+        return;
+    }
+
+    if (context.User.Identity?.IsAuthenticated != true)
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return;
+    }
+
+    var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? context.User.FindFirstValue("sub");
+    if (string.IsNullOrWhiteSpace(userId))
     {
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
         return;
     }
 
-    var tenant = context.RequestServices.GetRequiredService<RequestTenantContext>();
-    tenant.Set(identity.Value.TenantId, identity.Value.UserId);
+    var memberships = await context.RequestServices.GetRequiredService<ITenantMemberships>()
+        .ListAsync(userId, context.RequestAborted);
+    var choice = TenantMembershipSelection.Choose(
+        context.Request.Headers[TenantMembershipSelection.TenantHeader].FirstOrDefault(),
+        memberships);
+    if (choice.TenantId is not Guid tenantId)
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return;
+    }
+
+    context.RequestServices.GetRequiredService<RequestTenantContext>().Set(tenantId, userId);
     await next();
 });
 

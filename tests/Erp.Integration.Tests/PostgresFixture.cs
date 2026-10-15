@@ -1,5 +1,6 @@
 using Erp.BuildingBlocks;
 using Erp.Persistence;
+using Erp.Platform.Domain;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -40,6 +41,7 @@ public sealed class PostgresFixture : IAsyncLifetime
 
         var adminConnectionString = _container.GetConnectionString();
         await MigrateAsync(adminConnectionString);
+        await SeedMembershipsAsync(adminConnectionString);
         await CreateAppRoleAsync(adminConnectionString);
 
         var appBuilder = new NpgsqlConnectionStringBuilder(adminConnectionString)
@@ -57,7 +59,13 @@ public sealed class PostgresFixture : IAsyncLifetime
     }
 
     internal ApiSession OpenSession(Guid tenantId) =>
-        new(_factory ?? throw new InvalidOperationException("The API host is not started."), tenantId);
+        OpenSession(tenantId == TenantA ? "integration-a" : "integration-b", tenantId);
+
+    internal ApiSession OpenSession(string userId, Guid? tenantId) =>
+        new(_factory ?? throw new InvalidOperationException("The API host is not started."), userId, tenantId);
+
+    internal HttpClient CreateAnonymousClient() =>
+        (_factory ?? throw new InvalidOperationException("The API host is not started.")).CreateClient();
 
     public async Task DisposeAsync()
     {
@@ -76,6 +84,7 @@ public sealed class PostgresFixture : IAsyncLifetime
     {
         Environment.SetEnvironmentVariable("ConnectionStrings__Erp", connectionString);
         Environment.SetEnvironmentVariable("Authentication__Authority", "https://example.invalid/");
+        Environment.SetEnvironmentVariable("Authentication__ClientId", "test-client");
         Environment.SetEnvironmentVariable("Authentication__Audience", "erp-api");
         Environment.SetEnvironmentVariable("DevelopmentIdentity__Enabled", "false");
         Environment.SetEnvironmentVariable("DevelopmentIdentity__TenantId", "");
@@ -135,6 +144,17 @@ public sealed class PostgresFixture : IAsyncLifetime
         await api.PostOkAsync($"/api/v1/sales-orders/{order.Id}/release", new { }, $"{label}-release");
 
         return new TenantGraph(customer.Id, address.Id, article.Id, order.Id, receipt.Id);
+    }
+
+    private async Task SeedMembershipsAsync(string adminConnectionString)
+    {
+        var options = new DbContextOptionsBuilder<ErpDbContext>()
+            .UseNpgsql(adminConnectionString)
+            .Options;
+        await using var db = new ErpDbContext(options, new TenantContext(Guid.NewGuid(), "membership-seed"));
+        db.TenantMemberships.Add(TenantMembership.Grant("integration-a", TenantA, isDefault: true));
+        db.TenantMemberships.Add(TenantMembership.Grant("integration-b", TenantB, isDefault: true));
+        await db.SaveChangesAsync();
     }
 
     private static async Task MigrateAsync(string adminConnectionString)

@@ -2,6 +2,7 @@
 using Erp.Inventory.Domain;
 using Erp.MasterData.Domain;
 using Erp.Persistence;
+using Erp.Platform.Domain;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -63,8 +64,29 @@ if (!await db.Addresses.AnyAsync())
     db.CustomerAddresses.Add(CustomerAddress.Link(tenantId, customer.Id, address.Id, AddressRole.Shipping));
 }
 
+await SeedMembershipsAsync(db, tenantId);
 await db.SaveChangesAsync();
 Console.WriteLine("Database migrated and development tenant seeded.");
+
+static async Task SeedMembershipsAsync(ErpDbContext db, Guid tenantId)
+{
+    var seed = Environment.GetEnvironmentVariable("Authentication__SeedMemberships");
+    if (string.IsNullOrWhiteSpace(seed))
+    {
+        var secondTenant = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        seed = $"synthetic-a:{tenantId}:default;synthetic-b:{secondTenant}:default";
+    }
+
+    foreach (var membership in TenantMembership.ParseSeed(seed))
+    {
+        var exists = await db.TenantMemberships.AnyAsync(item =>
+            item.UserId == membership.UserId && item.TenantId == membership.TenantId);
+        if (!exists)
+        {
+            db.TenantMemberships.Add(membership);
+        }
+    }
+}
 
 static string Require(string name) =>
     Environment.GetEnvironmentVariable(name)

@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Microsoft.Extensions.Configuration;
 
 namespace Erp.Api;
@@ -14,18 +13,8 @@ internal sealed record DevelopmentIdentity(bool Enabled, Guid? TenantId, string?
             section["UserId"]);
     }
 
-    public TenantIdentity? Resolve(ClaimsPrincipal user, bool authenticationEnabled)
+    public TenantIdentity? Resolve()
     {
-        if (authenticationEnabled)
-        {
-            var claim = user.FindFirstValue("custom:tenant_id") ?? user.FindFirstValue("tenant_id");
-            var userId = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub");
-            if (!Guid.TryParse(claim, out var tenantId) || string.IsNullOrWhiteSpace(userId))
-                return null;
-
-            return new TenantIdentity(tenantId, userId);
-        }
-
         if (!Enabled || TenantId is not Guid configuredTenant || string.IsNullOrWhiteSpace(UserId))
             return null;
 

@@ -454,6 +454,33 @@ namespace Erp.Persistence.Migrations
                     b.ToTable("outbox_messages", "erp");
                 });
 
+            modelBuilder.Entity("Erp.Platform.Domain.TenantMembership", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "TenantId")
+                        .IsUnique();
+
+                    b.ToTable("tenant_memberships", "erp");
+                });
+
             modelBuilder.Entity("Erp.Sales.Domain.SalesOrder", b =>
                 {
                     b.Property<Guid>("Id")

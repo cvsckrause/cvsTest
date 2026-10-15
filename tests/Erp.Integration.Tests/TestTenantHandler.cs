@@ -13,20 +13,21 @@ internal sealed class TestTenantHandler(
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     public const string SchemeName = "Test";
-    public const string TenantHeader = "X-Test-Tenant";
     public const string UserHeader = "X-Test-User";
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var tenant = Request.Headers[TenantHeader].ToString();
         var user = Request.Headers[UserHeader].ToString();
-        if (!Guid.TryParse(tenant, out _) || string.IsNullOrWhiteSpace(user))
+        if (string.IsNullOrWhiteSpace(user))
         {
-            return Task.FromResult(AuthenticateResult.Fail("Test tenant headers are required."));
+            return Task.FromResult(AuthenticateResult.Fail("Test user header is required."));
         }
 
         var identity = new ClaimsIdentity(
-            [new Claim("sub", user), new Claim("custom:tenant_id", tenant)],
+            [
+                new Claim("sub", user),
+                new Claim("custom:tenant_id", "00000000-0000-0000-0000-000000000001")
+            ],
             authenticationType: Scheme.Name);
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name);
         return Task.FromResult(AuthenticateResult.Success(ticket));
