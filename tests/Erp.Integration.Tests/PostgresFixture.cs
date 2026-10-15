@@ -1,0 +1,176 @@
+using Erp.BuildingBlocks;
+using Erp.Persistence;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
+using Testcontainers.PostgreSql;
+
+namespace Erp.Integration.Tests;
+
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class PostgresCollection : ICollectionFixture<PostgresFixture>
+{
+    public const string Name = "Postgres";
+}
+
+public sealed class PostgresFixture : IAsyncLifetime
+{
+    private PostgreSqlContainer? _container;
+    private WebApplicationFactory<Program>? _factory;
+
+    public Guid TenantA { get; } = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    public Guid TenantB { get; } = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+    public TenantGraph SeedA { get; private set; }
+    public TenantGraph SeedB { get; private set; }
+    public string AppConnectionString { get; private set; } = string.Empty;
+    internal DatabaseProbe Probe { get; private set; } = null!;
+
+    public async Task InitializeAsync()
+    {
+        _container = new PostgreSqlBuilder("postgres:16-alpine")
+            .WithDatabase("erp_test")
+            .WithUsername("postgres")
+            .WithPassword("postgres")
+            .Build();
+        await _container.StartAsync();
+
+        var adminConnectionString = _container.GetConnectionString();
+        await MigrateAsync(adminConnectionString);
+        await CreateAppRoleAsync(adminConnectionString);
+
+        var appBuilder = new NpgsqlConnectionStringBuilder(adminConnectionString)
+        {
+            Username = "erp_app",
+            Password = "erp_app"
+        };
+        AppConnectionString = appBuilder.ConnectionString;
+        Probe = new DatabaseProbe(AppConnectionString, adminConnectionString);
+        _factory = CreateFactory(AppConnectionString);
+
+        SeedA = await SeedTenantAsync(TenantA, "A");
+        SeedB = await SeedTenantAsync(TenantB, "B");
+        await OutboxProcessor.ProcessOnceAsync(AppConnectionString, TenantA);
+    }
+
+    internal ApiSession OpenSession(Guid tenantId) =>
+        new(_factory ?? throw new InvalidOperationException("The API host is not started."), tenantId);
+
+    public async Task DisposeAsync()
+    {
+        if (_factory is not null)
+        {
+            await _factory.DisposeAsync();
+        }
+
+        if (_container is not null)
+        {
+            await _container.DisposeAsync();
+        }
+    }
+
+    private static WebApplicationFactory<Program> CreateFactory(string connectionString)
+    {
+        Environment.SetEnvironmentVariable("ConnectionStrings__Erp", connectionString);
+        Environment.SetEnvironmentVariable("Authentication__Authority", "https://example.invalid/");
+        Environment.SetEnvironmentVariable("Authentication__Audience", "erp-api");
+        Environment.SetEnvironmentVariable("DevelopmentIdentity__Enabled", "false");
+        Environment.SetEnvironmentVariable("DevelopmentIdentity__TenantId", "");
+        Environment.SetEnvironmentVariable("DevelopmentIdentity__UserId", "");
+
+        return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Production");
+            builder.ConfigureTestServices(services =>
+            {
+                services.AddAuthentication()
+                    .AddScheme<AuthenticationSchemeOptions, TestTenantHandler>(TestTenantHandler.SchemeName, _ => { });
+                services.PostConfigure<AuthenticationOptions>(options =>
+                {
+                    options.DefaultAuthenticateScheme = TestTenantHandler.SchemeName;
+                    options.DefaultChallengeScheme = TestTenantHandler.SchemeName;
+                });
+            });
+        });
+    }
+
+    private async Task<TenantGraph> SeedTenantAsync(Guid tenantId, string label)
+    {
+        using var api = OpenSession(tenantId);
+        var customer = await api.PostOkAsync("/api/v1/customers", new { number = $"{label}-100", name = $"{label} Customer" });
+        var address = await api.PostOkAsync("/api/v1/addresses", new
+        {
+            name = $"{label} Warehouse",
+            street = "1 Test Street",
+            postalCode = "10115",
+            city = "Berlin",
+            countryCode = "DE"
+        });
+        await api.PostOkAsync($"/api/v1/customers/{customer.Id}/addresses", new { addressId = address.Id, role = "Shipping" });
+        var article = await api.PostOkAsync("/api/v1/articles", new
+        {
+            sku = $"{label}-SKU",
+            name = $"{label} Article",
+            salesPrice = 10m,
+            openingStock = 10m,
+            warehouseCode = "MAIN"
+        });
+        var receipt = await api.PostOkAsync(
+            "/api/v1/stock/receipts",
+            new { articleId = article.Id, quantity = 1m, warehouseCode = "MAIN", reference = $"{label}-RECEIPT" },
+            $"{label}-receipt");
+        var order = await api.PostOkAsync(
+            "/api/v1/sales-orders",
+            new
+            {
+                customerId = customer.Id,
+                shipToAddressId = address.Id,
+                orderNumber = $"{label}-SO-1",
+                lines = new[] { new { articleId = article.Id, quantity = 1m } }
+            },
+            $"{label}-order");
+        await api.PostOkAsync($"/api/v1/sales-orders/{order.Id}/release", new { }, $"{label}-release");
+
+        return new TenantGraph(customer.Id, address.Id, article.Id, order.Id, receipt.Id);
+    }
+
+    private static async Task MigrateAsync(string adminConnectionString)
+    {
+        var options = new DbContextOptionsBuilder<ErpDbContext>()
+            .UseNpgsql(adminConnectionString)
+            .Options;
+        await using var db = new ErpDbContext(options, new TenantContext(Guid.NewGuid(), "migrate"));
+        await db.Database.MigrateAsync();
+    }
+
+    private static async Task CreateAppRoleAsync(string adminConnectionString)
+    {
+        await using var connection = new NpgsqlConnection(adminConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            do $$
+            begin
+                create role erp_app login password 'erp_app' nosuperuser nobypassrls;
+            exception
+                when duplicate_object then null;
+            end
+            $$;
+            grant usage on schema erp to erp_app;
+            grant select, insert, update, delete on all tables in schema erp to erp_app;
+            grant usage, select on all sequences in schema erp to erp_app;
+            """,
+            connection);
+        await command.ExecuteNonQueryAsync();
+    }
+}
+
+public readonly record struct TenantGraph(
+    Guid CustomerId,
+    Guid AddressId,
+    Guid ArticleId,
+    Guid SalesOrderId,
+    Guid MovementId);
