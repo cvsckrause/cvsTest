@@ -76,33 +76,46 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!customerId) {
-      setShippingLinks([])
-      setShipToAddressId('')
-      return
-    }
+    if (!customerId) return
 
+    let cancelled = false
     erpApi.customerAddresses(customerId, 'Shipping')
       .then((links) => {
+        if (cancelled) return
         setShippingLinks(links)
         setShipToAddressId((current) =>
           links.some((link) => link.addressId === current) ? current : (links[0]?.addressId ?? ''))
       })
-      .catch((error: Error) => setNotice(`Lieferadressen nicht ladbar: ${error.message}`))
+      .catch((error: Error) => {
+        if (!cancelled) setNotice(`Lieferadressen nicht ladbar: ${error.message}`)
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [customerId])
 
   useEffect(() => {
     if (workspace !== 'lager') return
 
-    setBusy(true)
+    let cancelled = false
     Promise.all([erpApi.stock(), erpApi.stockMovements()])
       .then(([loadedStock, loadedMovements]) => {
+        if (cancelled) return
         setStock(loadedStock)
         setMovements(loadedMovements)
         setNotice('Lager bereit')
       })
-      .catch((error: Error) => setNotice(error.message))
-      .finally(() => setBusy(false))
+      .catch((error: Error) => {
+        if (!cancelled) setNotice(error.message)
+      })
+      .finally(() => {
+        if (!cancelled) setBusy(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [workspace])
 
   const netAmount = useMemo(
@@ -122,6 +135,7 @@ function App() {
 
   function openLager() {
     setWorkspace('lager')
+    setBusy(true)
     setNotice('Lager wird geladen …')
   }
 
@@ -391,7 +405,15 @@ function App() {
                   </label>
                   <label className="customer-field">
                     Kunde
-                    <select value={customerId} onChange={(event) => setCustomerId(event.target.value)} disabled={Boolean(order)}>
+                    <select
+                      value={customerId}
+                      onChange={(event) => {
+                        setCustomerId(event.target.value)
+                        setShippingLinks([])
+                        setShipToAddressId('')
+                      }}
+                      disabled={Boolean(order)}
+                    >
                       <option value="">Kunde wählen</option>
                       {customers.map((customer) => (
                         <option key={customer.id} value={customer.id}>{customer.number} · {customer.name}</option>
