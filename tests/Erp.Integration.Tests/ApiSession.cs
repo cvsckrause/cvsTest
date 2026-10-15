@@ -9,11 +9,14 @@ internal sealed class ApiSession : IDisposable
 {
     private readonly HttpClient _client;
 
-    public ApiSession(WebApplicationFactory<Program> factory, Guid tenantId)
+    public ApiSession(WebApplicationFactory<Program> factory, string userId, Guid? tenantId)
     {
         _client = factory.CreateClient();
-        _client.DefaultRequestHeaders.Add(TestTenantHandler.TenantHeader, tenantId.ToString());
-        _client.DefaultRequestHeaders.Add(TestTenantHandler.UserHeader, "integration-test");
+        _client.DefaultRequestHeaders.Add(TestTenantHandler.UserHeader, userId);
+        if (tenantId is Guid tenant)
+        {
+            _client.DefaultRequestHeaders.Add("X-Tenant-Id", tenant.ToString());
+        }
     }
 
     public Task<ApiResult> GetAsync(string path) =>

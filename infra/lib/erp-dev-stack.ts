@@ -168,9 +168,6 @@ export class ErpDevStack extends cdk.Stack {
       Database__Name: 'erp_dev',
       Database__Username: 'erp',
       Worker__TenantId: '11111111-1111-1111-1111-111111111111',
-      DevelopmentIdentity__Enabled: 'true',
-      DevelopmentIdentity__TenantId: '11111111-1111-1111-1111-111111111111',
-      DevelopmentIdentity__UserId: 'local-developer',
     }
 
     const apiTask = new ecs.FargateTaskDefinition(this, 'ApiTask', {
@@ -184,7 +181,11 @@ export class ErpDevStack extends cdk.Stack {
     const apiContainer = apiTask.addContainer('Api', {
       image: apiImage,
       logging: ecs.LogDrivers.awsLogs({ logGroup, streamPrefix: 'api' }),
-      environment: databaseEnv,
+      environment: {
+        ...databaseEnv,
+        Authentication__Authority: `https://cognito-idp.${this.region}.amazonaws.com/${userPool.userPoolId}`,
+        Authentication__ClientId: userPoolClient.userPoolClientId,
+      },
       secrets: {
         Database__Password: ecs.Secret.fromSecretsManager(databaseSecret, 'password'),
       },
@@ -229,7 +230,11 @@ export class ErpDevStack extends cdk.Stack {
     migratorTask.addContainer('Migrator', {
       image: migratorImage,
       logging: ecs.LogDrivers.awsLogs({ logGroup, streamPrefix: 'migrator' }),
-      environment: databaseEnv,
+      environment: {
+        ...databaseEnv,
+        Authentication__SeedMemberships:
+          'synthetic-a:11111111-1111-1111-1111-111111111111:default;synthetic-b:22222222-2222-2222-2222-222222222222:default',
+      },
       secrets: {
         Database__Password: ecs.Secret.fromSecretsManager(databaseSecret, 'password'),
       },

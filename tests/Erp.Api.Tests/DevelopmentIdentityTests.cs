@@ -1,12 +1,14 @@
 using System.Net;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
-using Microsoft.AspNetCore.Builder;
+using Erp.Platform.Domain;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -19,7 +21,22 @@ public sealed class DevelopmentIdentityTests
     private static readonly Guid ConfiguredTenant = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
     [Fact]
-    public async Task Authenticated_request_without_tenant_claim_is_forbidden()
+    public async Task Anonymous_api_request_is_unauthorized()
+    {
+        await using var fixture = ApiFixture.Start(
+            environment: "Production",
+            authenticationEnabled: true,
+            developmentIdentityEnabled: false,
+            user: new ClaimsPrincipal(new ClaimsIdentity()));
+
+        var status = await GetStatus(fixture, "/api/v1/customers");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, status);
+        Assert.Equal(Guid.Empty, fixture.Observed.TenantId);
+    }
+
+    [Fact]
+    public async Task Authenticated_request_without_membership_is_forbidden()
     {
         await using var fixture = ApiFixture.Start(
             environment: "Production",
@@ -27,7 +44,7 @@ public sealed class DevelopmentIdentityTests
             developmentIdentityEnabled: false,
             configuredTenant: ConfiguredTenant,
             configuredUserId: "local-developer",
-            user: AuthenticatedUser("user-1"));
+            user: AuthenticatedUser("user-1", tenantClaim: ClaimTenant.ToString()));
 
         var status = await GetStatus(fixture, "/api/v1/customers");
 
@@ -36,15 +53,15 @@ public sealed class DevelopmentIdentityTests
     }
 
     [Fact]
-    public async Task Authenticated_request_with_invalid_tenant_claim_is_forbidden()
+    public async Task Authenticated_request_with_a_non_member_tenant_header_is_forbidden()
     {
         await using var fixture = ApiFixture.Start(
             environment: "Production",
             authenticationEnabled: true,
             developmentIdentityEnabled: false,
-            configuredTenant: ConfiguredTenant,
-            configuredUserId: "local-developer",
-            user: AuthenticatedUser("user-1", tenantClaim: "not-a-guid"));
+            user: AuthenticatedUser("user-1", tenantClaim: ClaimTenant.ToString()),
+            memberships: [TenantMembership.Grant("user-1", ConfiguredTenant, isDefault: true)],
+            tenantHeader: ClaimTenant.ToString());
 
         var status = await GetStatus(fixture, "/api/v1/customers");
 
@@ -69,7 +86,7 @@ public sealed class DevelopmentIdentityTests
     }
 
     [Fact]
-    public async Task Authenticated_request_uses_the_tenant_claim()
+    public async Task Authenticated_member_uses_membership_instead_of_the_tenant_claim()
     {
         await using var fixture = ApiFixture.Start(
             environment: "Production",
@@ -77,11 +94,13 @@ public sealed class DevelopmentIdentityTests
             developmentIdentityEnabled: false,
             configuredTenant: ConfiguredTenant,
             configuredUserId: "local-developer",
-            user: AuthenticatedUser("user-1", tenantClaim: ClaimTenant.ToString()));
+            user: AuthenticatedUser("user-1", tenantClaim: ConfiguredTenant.ToString()),
+            memberships: [TenantMembership.Grant("user-1", ClaimTenant, isDefault: true)]);
 
         var status = await GetStatus(fixture, "/api/v1/customers");
 
         Assert.NotEqual(HttpStatusCode.Forbidden, status);
+        Assert.NotEqual(HttpStatusCode.Unauthorized, status);
         Assert.Equal(ClaimTenant, fixture.Observed.TenantId);
         Assert.Equal("user-1", fixture.Observed.UserId);
     }
@@ -214,11 +233,15 @@ internal sealed class ApiFixture : IAsyncDisposable
     public HttpClient Client { get; }
     public ObservedTenant Observed { get; }
 
-    private ApiFixture(WebApplicationFactory<Program> factory, ObservedTenant observed)
+    private ApiFixture(WebApplicationFactory<Program> factory, ObservedTenant observed, string? tenantHeader)
     {
         _factory = factory;
         Observed = observed;
         Client = factory.CreateClient();
+        if (tenantHeader is not null)
+        {
+            Client.DefaultRequestHeaders.Add(TenantMembershipSelection.TenantHeader, tenantHeader);
+        }
     }
 
     public static ApiFixture Start(
@@ -227,7 +250,9 @@ internal sealed class ApiFixture : IAsyncDisposable
         bool developmentIdentityEnabled,
         ClaimsPrincipal? user = null,
         Guid? configuredTenant = null,
-        string? configuredUserId = null)
+        string? configuredUserId = null,
+        IReadOnlyList<TenantMembership>? memberships = null,
+        string? tenantHeader = null)
     {
         var observed = new ObservedTenant();
         var factory = CreateFactory(
@@ -237,8 +262,9 @@ internal sealed class ApiFixture : IAsyncDisposable
             configuredTenant,
             configuredUserId,
             user,
-            observed);
-        return new ApiFixture(factory, observed);
+            observed,
+            memberships);
+        return new ApiFixture(factory, observed, tenantHeader);
     }
 
     public static WebApplicationFactory<Program> CreateFactory(
@@ -248,7 +274,8 @@ internal sealed class ApiFixture : IAsyncDisposable
         Guid? configuredTenant = null,
         string? configuredUserId = null,
         ClaimsPrincipal? user = null,
-        ObservedTenant? observed = null)
+        ObservedTenant? observed = null,
+        IReadOnlyList<TenantMembership>? memberships = null)
     {
         observed ??= new ObservedTenant();
         user ??= new ClaimsPrincipal(new ClaimsIdentity());
@@ -258,6 +285,7 @@ internal sealed class ApiFixture : IAsyncDisposable
         Environment.SetEnvironmentVariable(
             "Authentication__Authority",
             authenticationEnabled ? "https://example.invalid/" : "");
+        Environment.SetEnvironmentVariable("Authentication__ClientId", authenticationEnabled ? "test-client" : "");
         Environment.SetEnvironmentVariable("Authentication__Audience", "erp-api");
         Environment.SetEnvironmentVariable(
             "DevelopmentIdentity__Enabled",
@@ -273,6 +301,8 @@ internal sealed class ApiFixture : IAsyncDisposable
                 services.AddSingleton(observed);
                 services.AddSingleton(new TestPrincipal(user));
                 services.AddSingleton<IStartupFilter, TenantObservationFilter>();
+                services.RemoveAll<ITenantMemberships>();
+                services.AddSingleton<ITenantMemberships>(new FakeTenantMemberships(memberships ?? []));
                 if (authenticationEnabled)
                 {
                     services.AddAuthentication()
@@ -306,6 +336,12 @@ internal sealed class ObservedTenant
     }
 }
 
+internal sealed class FakeTenantMemberships(IReadOnlyList<TenantMembership> memberships) : ITenantMemberships
+{
+    public Task<IReadOnlyList<TenantMembership>> ListAsync(string userId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<TenantMembership>>(memberships.Where(membership => membership.UserId == userId).ToArray());
+}
+
 internal sealed class TestPrincipal(ClaimsPrincipal user)
 {
     public ClaimsPrincipal User { get; } = user;
@@ -322,6 +358,11 @@ internal sealed class TestAuthHandler(
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        if (principal.User.Identity?.IsAuthenticated != true)
+        {
+            return Task.FromResult(AuthenticateResult.NoResult());
+        }
+
         var ticket = new AuthenticationTicket(principal.User, SchemeName);
         return Task.FromResult(AuthenticateResult.Success(ticket));
     }
