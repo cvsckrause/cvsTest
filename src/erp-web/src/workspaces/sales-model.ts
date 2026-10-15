@@ -78,7 +78,6 @@ export function useSalesWorkspace({
 
   useEffect(() => {
     void refreshOrderList(listStatus)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh when filter changes only
   }, [listStatus])
 
   const [pinnedCustomer, setPinnedCustomer] = useState<Customer | null>(null)
@@ -97,12 +96,20 @@ export function useSalesWorkspace({
 
   useEffect(() => {
     if (!orderId || orderId === 'new') {
+      const enteringNew = orderId === 'new' && loadedOrderId.current !== 'new'
       loadedOrderId.current = orderId === 'new' ? 'new' : null
-      if (!orderId) {
+      if (!orderId || enteringNew) {
         setOrder(null)
         setDeliveries([])
         setInvoices([])
         setDocumentsWaiting(false)
+      }
+      if (enteringNew) {
+        setLines([])
+        setStep('capture')
+        setCustomerId('')
+        setShipToAddressId('')
+        setOrderNumber((current) => nextOrderNumber(current))
       }
       return
     }
@@ -141,6 +148,7 @@ export function useSalesWorkspace({
       return
     }
 
+    const releasedOrderId = order.id
     let cancelled = false
     let attempts = 0
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -149,8 +157,8 @@ export function useSalesWorkspace({
       attempts += 1
       try {
         const [nextDeliveries, nextInvoices] = await Promise.all([
-          erpApi.salesOrderDeliveries(order!.id),
-          erpApi.salesOrderInvoices(order!.id),
+          erpApi.salesOrderDeliveries(releasedOrderId),
+          erpApi.salesOrderInvoices(releasedOrderId),
         ])
         if (cancelled) return
         setDeliveries(nextDeliveries)
@@ -166,6 +174,7 @@ export function useSalesWorkspace({
             void loadDocuments()
           }, POLL_MS)
         } else {
+          setDocumentsWaiting(false)
           setNotice('Lieferung und Rechnung werden noch erzeugt. Später erneut öffnen oder Worker prüfen.')
         }
       } catch (error) {
