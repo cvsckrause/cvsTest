@@ -155,8 +155,8 @@ export function useStammWorkspace({
       }
       setEditingArticleId(null)
       setArticleForm(emptyArticle)
-      await refreshArticles()
       navigate({ workspace: 'stamm', tab: 'articles', documentId: null }, 'replace')
+      await refreshArticles()
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Artikel konnte nicht gespeichert werden.')
     } finally {
@@ -185,9 +185,9 @@ export function useStammWorkspace({
       }
       setEditingAddressId(null)
       setAddressForm(emptyAddress)
+      navigate({ workspace: 'stamm', tab: 'addresses', documentId: null }, 'replace')
       await refreshAddresses()
       await reloadShippingLinks(salesCustomerId, false)
-      navigate({ workspace: 'stamm', tab: 'addresses', documentId: null }, 'replace')
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Adresse konnte nicht gespeichert werden.')
     } finally {

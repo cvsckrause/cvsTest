@@ -41,7 +41,15 @@ export function useSalesWorkspace({
   const [step, setStep] = useState<WorkflowStep>('capture')
   const loadedOrderId = useRef<string | null>(null)
 
-  const selectedCustomerId = keepOrFirst(customerId, customers.map((customer) => customer.id))
+  const [pinnedCustomer, setPinnedCustomer] = useState<Customer | null>(null)
+  const customerChoices = useMemo(() => {
+    if (!customerId || customers.some((customer) => customer.id === customerId)) return customers
+    const known = pinnedCustomer?.id === customerId
+      ? pinnedCustomer
+      : { id: customerId, number: '…', name: 'Kunde wird geladen…' }
+    return [...customers, known]
+  }, [customerId, customers, pinnedCustomer])
+  const selectedCustomerId = keepOrFirst(customerId, customerChoices.map((customer) => customer.id))
   const selectedArticleId = keepOrFirst(articleId, articles.map((article) => article.id))
   const selectedShipToId = shippingLinks.some((link) => link.addressId === shipToAddressId)
     ? shipToAddressId
@@ -73,6 +81,37 @@ export function useSalesWorkspace({
       cancelled = true
     }
   }, [orderId, setNotice])
+
+  useEffect(() => {
+    if (!customerId || customers.some((customer) => customer.id === customerId)) return
+    if (pinnedCustomer?.id === customerId) return
+
+    let cancelled = false
+    let after: string | undefined
+    const load = async () => {
+      for (let page = 0; page < 20; page += 1) {
+        const batch = await erpApi.customers(after)
+        const found = batch.find((customer) => customer.id === customerId)
+        if (found) return found
+        const cursor = batch.at(-1)?.number
+        if (batch.length < 50 || !cursor || cursor === after) return null
+        after = cursor
+      }
+      return null
+    }
+
+    load()
+      .then((found) => {
+        if (!cancelled && found) setPinnedCustomer(found)
+      })
+      .catch((error: Error) => {
+        if (!cancelled) setNotice(`Kunde nicht ladbar: ${error.message}`)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [customerId, customers, pinnedCustomer, setNotice])
 
   useEffect(() => {
     if (!selectedCustomerId) return
@@ -194,7 +233,7 @@ export function useSalesWorkspace({
     step,
     orderNumber,
     setOrderNumber,
-    customers,
+    customers: customerChoices,
     articles,
     shippingLinks,
     lines,
