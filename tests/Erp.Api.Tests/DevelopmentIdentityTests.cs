@@ -12,6 +12,7 @@ using Microsoft.Extensions.Options;
 
 namespace Erp.Api.Tests;
 
+[Collection("ErpApi")]
 public sealed class DevelopmentIdentityTests
 {
     private static readonly Guid ClaimTenant = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");

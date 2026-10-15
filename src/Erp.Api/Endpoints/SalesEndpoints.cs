@@ -22,7 +22,7 @@ internal static class SalesEndpoints
             if (idempotencyKey is null) return Results.BadRequest(new { error = "Idempotency-Key header is required." });
 
             var existing = await db.IdempotencyRecords.AsNoTracking()
-                .SingleOrDefaultAsync(record => record.Operation == "CreateSalesOrder" && record.Key == idempotencyKey, cancellationToken);
+                .SingleOrDefaultAsync(record => record.Operation == Idempotency.CreateSalesOrder && record.Key == idempotencyKey, cancellationToken);
             if (existing is not null)
             {
                 return Results.Ok(new { id = existing.ResourceId, replayed = true });
@@ -67,7 +67,7 @@ internal static class SalesEndpoints
             }
 
             db.SalesOrders.Add(order);
-            db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, "CreateSalesOrder", order.Id));
+            db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, Idempotency.CreateSalesOrder, order.Id));
             await db.SaveChangesAsync(cancellationToken);
             return Results.Created($"/api/v1/sales-orders/{order.Id}", ToResponse(order));
         });
@@ -90,7 +90,7 @@ internal static class SalesEndpoints
             if (idempotencyKey is null) return Results.BadRequest(new { error = "Idempotency-Key header is required." });
 
             var existing = await db.IdempotencyRecords.AsNoTracking()
-                .SingleOrDefaultAsync(record => record.Operation == "ReleaseSalesOrder" && record.Key == idempotencyKey, cancellationToken);
+                .SingleOrDefaultAsync(record => record.Operation == Idempotency.ReleaseSalesOrder && record.Key == idempotencyKey, cancellationToken);
             if (existing is not null) return Results.Ok(new { id = existing.ResourceId, replayed = true });
 
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
@@ -134,7 +134,7 @@ internal static class SalesEndpoints
                 order.Id,
                 payload,
                 httpContext.TraceIdentifier));
-            db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, "ReleaseSalesOrder", order.Id));
+            db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, Idempotency.ReleaseSalesOrder, order.Id));
 
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);

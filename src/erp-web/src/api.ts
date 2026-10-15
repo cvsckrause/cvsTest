@@ -120,9 +120,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error('API nicht erreichbar. Seite neu laden oder prüfen, ob die ERP-API läuft.')
   }
 
-  const payload = await readJson<{ error?: string } & T>(response, path)
+  const payload = await readJson<{ detail?: string; error?: string } & T>(response, path)
   if (!response.ok) {
-    throw new Error(payload?.error ?? `Speichern fehlgeschlagen (${response.status})`)
+    throw new Error(payload?.detail ?? payload?.error ?? `Speichern fehlgeschlagen (${response.status})`)
   }
 
   return payload as T

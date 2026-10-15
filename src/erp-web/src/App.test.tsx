@@ -75,6 +75,26 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => route(String(input))))
 })
 
+test('shows the problem detail when saving an article is rejected', async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url.includes('/articles') && init?.method === 'POST') {
+      return jsonResponse({ title: 'The request conflicts with the current state.', status: 409, detail: 'An article with this SKU already exists.' }, false, 409)
+    }
+    return route(url)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  render(<App />)
+  fireEvent.click(screen.getByTitle('Stammdaten'))
+  await screen.findByRole('heading', { name: 'Artikel anlegen' })
+  fireEvent.change(screen.getByLabelText('SKU'), { target: { value: 'BIKE-001' } })
+  fireEvent.change(screen.getByLabelText('Bezeichnung'), { target: { value: 'Cityrad' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Artikel anlegen' }))
+
+  expect((await screen.findAllByText('An article with this SKU already exists.')).length).toBeGreaterThan(0)
+})
+
 test('renders the order-entry workstation with ship-to', async () => {
   render(<App />)
 
