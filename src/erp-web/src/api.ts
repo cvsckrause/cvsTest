@@ -66,7 +66,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const erpApi = {
-  customers: () => request<Customer[]>('/customers'),
+  customers: (after?: string) =>
+    request<Customer[]>(`/customers${after ? `?after=${encodeURIComponent(after)}` : ''}`),
   articles: (q?: string) => request<Article[]>(`/articles${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   createArticle: (sku: string, name: string, salesPrice: number, openingStock = 0) =>
     request<Article>('/articles', {
