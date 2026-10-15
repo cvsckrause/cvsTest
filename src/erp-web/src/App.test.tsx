@@ -66,10 +66,39 @@ const salesOrder = {
   warehouseCode: 'MAIN',
   netAmount: 799,
   lines: [{ articleId: 'article-1', sku: 'BIKE-001', quantity: 1, unitPrice: 799 }],
+  createdAt: '2026-10-15T10:00:00.000Z',
+}
+
+const salesOrderSummary = {
+  id: 'order-1',
+  orderNumber: 'SO-1001',
+  customerId: 'customer-1',
+  status: 'Released',
+  netAmount: 799,
+  createdAt: '2026-10-15T10:00:00.000Z',
+}
+
+const delivery = {
+  id: 'delivery-1',
+  salesOrderId: 'order-1',
+  number: 'DEL-SO-1001',
+  shipTo: address,
+  createdAt: '2026-10-15T10:01:00.000Z',
+}
+
+const invoice = {
+  id: 'invoice-1',
+  salesOrderId: 'order-1',
+  number: 'INV-SO-1001',
+  netAmount: 799,
+  createdAt: '2026-10-15T10:01:00.000Z',
 }
 
 function route(url: string) {
+  if (url.includes('/sales-orders/') && url.includes('/deliveries')) return jsonResponse([delivery])
+  if (url.includes('/sales-orders/') && url.includes('/invoices')) return jsonResponse([invoice])
   if (url.includes('/sales-orders/')) return jsonResponse(salesOrder)
+  if (url.includes('/sales-orders')) return jsonResponse([salesOrderSummary])
   if (url.includes('/customers/') && url.includes('/addresses')) return jsonResponse([shippingLink])
   if (url.includes('/addresses')) return jsonResponse([address])
   if (url.includes('/customers')) return jsonResponse([customer])
@@ -77,6 +106,11 @@ function route(url: string) {
   if (url.includes('/stock/movements')) return jsonResponse([movement])
   if (url.includes('/stock')) return jsonResponse([stockRow])
   return jsonResponse({ error: 'not found' }, false, 404)
+}
+
+async function openNewOrder() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Neuer Auftrag' }))
+  expect(await screen.findByRole('heading', { name: 'Neuer Auftrag' })).toBeInTheDocument()
 }
 
 afterEach(() => {
@@ -109,20 +143,33 @@ test('shows the problem detail when saving an article is rejected', async () => 
   expect((await screen.findAllByText('An article with this SKU already exists.')).length).toBeGreaterThan(0)
 })
 
-test('renders the order-entry workstation with ship-to', async () => {
+test('shows the sales order list and opens capture from it', async () => {
   render(<App />)
 
-  expect(screen.getByRole('heading', { name: 'Neuer Auftrag' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Auftragsliste' })).toBeInTheDocument()
+  expect(await screen.findByText('SO-1001')).toBeInTheDocument()
+  expect(screen.getByLabelText(/^Build /)).toHaveTextContent('vdev · local · unknown')
+
+  await openNewOrder()
   expect(screen.getByRole('button', { name: 'Auftrag speichern' })).toBeInTheDocument()
   expect(await screen.findByRole('option', { name: '10000 · Nordrad GmbH' })).toBeInTheDocument()
   expect(await screen.findByRole('option', { name: 'BIKE-001 · Cityrad' })).toBeInTheDocument()
   expect(await screen.findByRole('option', { name: 'Nordrad GmbH · 20095 Hamburg' })).toBeInTheDocument()
-  expect(screen.getByLabelText(/^Build /)).toHaveTextContent('vdev · local · unknown')
+})
+
+test('opens an order from the list and shows delivery and invoice numbers', async () => {
+  render(<App />)
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Öffnen' }))
+  expect(await screen.findByRole('heading', { name: 'SO-1001' })).toBeInTheDocument()
+  expect(await screen.findByText('DEL-SO-1001')).toBeInTheDocument()
+  expect(screen.getByText('INV-SO-1001')).toBeInTheDocument()
+  expect(window.location.pathname).toBe('/sales/order-1')
 })
 
 test('opens stamm workspace for articles and addresses', async () => {
   render(<App />)
-  await screen.findByRole('option', { name: '10000 · Nordrad GmbH' })
+  await screen.findByRole('heading', { name: 'Auftragsliste' })
 
   fireEvent.click(screen.getAllByTitle('Stammdaten')[0])
 
@@ -138,7 +185,7 @@ test('opens stamm workspace for articles and addresses', async () => {
 test('opens the lager workspace from the nav', async () => {
   render(<App />)
 
-  await screen.findByRole('option', { name: 'BIKE-001 · Cityrad' })
+  await screen.findByRole('heading', { name: 'Auftragsliste' })
   fireEvent.click(screen.getByTitle('Lager'))
 
   expect(await screen.findByRole('heading', { name: 'Bestand & Wareneingang' })).toBeInTheDocument()
@@ -176,7 +223,7 @@ test('reuses the same Idempotency-Key when a receipt request fails and is retrie
   vi.stubGlobal('fetch', fetchMock)
 
   render(<App />)
-  await screen.findByRole('option', { name: 'BIKE-001 · Cityrad' })
+  await screen.findByRole('heading', { name: 'Auftragsliste' })
   fireEvent.click(screen.getByTitle('Lager'))
   await screen.findByRole('heading', { name: 'Bestand & Wareneingang' })
 
@@ -220,7 +267,7 @@ test('does not mint a new Idempotency-Key when stock refresh fails after a succe
   vi.stubGlobal('fetch', fetchMock)
 
   render(<App />)
-  await screen.findByRole('option', { name: 'BIKE-001 · Cityrad' })
+  await screen.findByRole('heading', { name: 'Auftragsliste' })
   fireEvent.click(screen.getByTitle('Lager'))
   await screen.findByRole('heading', { name: 'Bestand & Wareneingang' })
 
@@ -243,8 +290,8 @@ test('opens the workspace and document named in the URL', async () => {
   window.history.replaceState(null, '', '/sales/order-1')
   render(<App />)
 
-  expect(await screen.findByText('SO-1001')).toBeInTheDocument()
-  expect(screen.getByText('Freigegeben')).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'SO-1001' })).toBeInTheDocument()
+  expect(screen.getAllByText('Freigegeben').length).toBeGreaterThan(0)
   expect(window.location.pathname).toBe('/sales/order-1')
 
   window.history.pushState(null, '', '/stamm/articles/article-1')
@@ -264,6 +311,7 @@ test('sends NEBEN when the warehouse field is neben', async () => {
   vi.stubGlobal('fetch', fetchMock)
 
   render(<App />)
+  await openNewOrder()
   await screen.findByRole('option', { name: '10000 · Nordrad GmbH' })
   await screen.findByRole('option', { name: 'Nordrad GmbH · 20095 Hamburg' })
   fireEvent.change(screen.getByLabelText('Lager'), { target: { value: 'neben' } })

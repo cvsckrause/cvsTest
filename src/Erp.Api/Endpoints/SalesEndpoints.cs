@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text.Json;
+using Erp.Billing.Domain;
 using Erp.BuildingBlocks;
 using Erp.Persistence;
 using Erp.Platform.Domain;
@@ -11,6 +13,70 @@ internal static class SalesEndpoints
 {
     public static RouteGroupBuilder MapSalesEndpoints(this RouteGroupBuilder api)
     {
+        api.MapGet("/sales-orders", async (
+            ErpDbContext db,
+            string? status,
+            string? after,
+            int? limit,
+            CancellationToken cancellationToken) =>
+        {
+            SalesOrderStatus? statusFilter = null;
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                if (!Enum.TryParse<SalesOrderStatus>(status, ignoreCase: true, out var parsed))
+                {
+                    return Results.BadRequest(new { error = "Status must be Draft, Released, or Cancelled." });
+                }
+
+                statusFilter = parsed;
+            }
+
+            var pageSize = Math.Clamp(limit ?? 50, 1, 200);
+            var query = db.SalesOrders.AsNoTracking().AsQueryable();
+            if (statusFilter is { } filter)
+            {
+                query = query.Where(order => order.Status == filter);
+            }
+
+            if (!string.IsNullOrWhiteSpace(after))
+            {
+                if (!TryParseOrderCursor(after, out var afterCreatedAt, out var afterId))
+                {
+                    return Results.BadRequest(new { error = "Invalid after cursor." });
+                }
+
+                query = query.Where(order =>
+                    order.CreatedAt < afterCreatedAt
+                    || (order.CreatedAt == afterCreatedAt && order.Id.CompareTo(afterId) < 0));
+            }
+
+            var rows = await query
+                .OrderByDescending(order => order.CreatedAt)
+                .ThenByDescending(order => order.Id)
+                .Take(pageSize)
+                .Select(order => new
+                {
+                    order.Id,
+                    order.OrderNumber,
+                    order.CustomerId,
+                    order.Status,
+                    NetAmount = order.Lines.Sum(line => line.Quantity * line.UnitPrice),
+                    order.CreatedAt
+                })
+                .ToListAsync(cancellationToken);
+
+            var response = rows
+                .Select(order => new SalesOrderSummaryResponse(
+                    order.Id,
+                    order.OrderNumber,
+                    order.CustomerId,
+                    order.Status.ToString(),
+                    order.NetAmount,
+                    order.CreatedAt))
+                .ToList();
+            return Results.Ok(response);
+        }).Produces<List<SalesOrderSummaryResponse>>();
+
         api.MapPost("/sales-orders", async (
             CreateSalesOrderRequest request,
             HttpContext httpContext,
@@ -79,6 +145,43 @@ internal static class SalesEndpoints
                 .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
             return order is null ? Results.NotFound() : Results.Ok(ToResponse(order));
         }).Produces<SalesOrderResponse>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapGet("/sales-orders/{id:guid}/deliveries", async (Guid id, ErpDbContext db, CancellationToken cancellationToken) =>
+        {
+            if (!await db.SalesOrders.AsNoTracking().AnyAsync(order => order.Id == id, cancellationToken))
+            {
+                return Results.NotFound();
+            }
+
+            var deliveries = await db.Deliveries.AsNoTracking()
+                .Where(delivery => delivery.SalesOrderId == id)
+                .OrderBy(delivery => delivery.CreatedAt)
+                .ThenBy(delivery => delivery.Id)
+                .ToListAsync(cancellationToken);
+            return Results.Ok(deliveries.Select(ToDeliveryResponse).ToList());
+        }).Produces<List<DeliveryResponse>>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapGet("/sales-orders/{id:guid}/invoices", async (Guid id, ErpDbContext db, CancellationToken cancellationToken) =>
+        {
+            if (!await db.SalesOrders.AsNoTracking().AnyAsync(order => order.Id == id, cancellationToken))
+            {
+                return Results.NotFound();
+            }
+
+            var invoices = await db.Invoices.AsNoTracking()
+                .Where(invoice => invoice.SalesOrderId == id)
+                .OrderBy(invoice => invoice.CreatedAt)
+                .ThenBy(invoice => invoice.Id)
+                .ToListAsync(cancellationToken);
+            return Results.Ok(invoices.Select(ToInvoiceResponse).ToList());
+        }).Produces<List<InvoiceResponse>>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapGet("/invoices/{id:guid}", async (Guid id, ErpDbContext db, CancellationToken cancellationToken) =>
+        {
+            var invoice = await db.Invoices.AsNoTracking()
+                .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+            return invoice is null ? Results.NotFound() : Results.Ok(ToInvoiceResponse(invoice));
+        }).Produces<InvoiceResponse>().Produces(StatusCodes.Status404NotFound);
 
         api.MapPost("/sales-orders/{id:guid}/release", async (
             Guid id,
@@ -243,6 +346,37 @@ internal static class SalesEndpoints
             order.WarehouseCode,
             order.NetAmount,
             order.Lines.Select(line => new SalesOrderLineResponse(line.ArticleId, line.Sku, line.Quantity, line.UnitPrice)).ToArray());
+
+    private static DeliveryResponse ToDeliveryResponse(Delivery delivery) =>
+        new(
+            delivery.Id,
+            delivery.SalesOrderId,
+            delivery.Number,
+            new AddressSnapshot(
+                delivery.ShipToName,
+                delivery.ShipToStreet,
+                delivery.ShipToPostalCode,
+                delivery.ShipToCity,
+                delivery.ShipToCountryCode,
+                delivery.ShipToAdditionalLine),
+            delivery.CreatedAt);
+
+    private static InvoiceResponse ToInvoiceResponse(Invoice invoice) =>
+        new(invoice.Id, invoice.SalesOrderId, invoice.Number, invoice.NetAmount, invoice.CreatedAt);
+
+    private static bool TryParseOrderCursor(string after, out DateTimeOffset createdAt, out Guid id)
+    {
+        createdAt = default;
+        id = default;
+        var separator = after.LastIndexOf('/');
+        if (separator <= 0 || separator == after.Length - 1) return false;
+        return DateTimeOffset.TryParse(
+                   after[..separator],
+                   CultureInfo.InvariantCulture,
+                   DateTimeStyles.RoundtripKind,
+                   out createdAt)
+               && Guid.TryParse(after[(separator + 1)..], out id);
+    }
 }
 
 public sealed record CreateSalesOrderRequest(
@@ -252,6 +386,13 @@ public sealed record CreateSalesOrderRequest(
     IReadOnlyCollection<CreateSalesOrderLineRequest> Lines,
     string? WarehouseCode = null);
 public sealed record CreateSalesOrderLineRequest(Guid ArticleId, decimal Quantity);
+public sealed record SalesOrderSummaryResponse(
+    Guid Id,
+    string OrderNumber,
+    Guid CustomerId,
+    string Status,
+    decimal NetAmount,
+    DateTimeOffset CreatedAt);
 public sealed record SalesOrderResponse(
     Guid Id,
     string OrderNumber,
@@ -263,3 +404,15 @@ public sealed record SalesOrderResponse(
     decimal NetAmount,
     IReadOnlyCollection<SalesOrderLineResponse> Lines);
 public sealed record SalesOrderLineResponse(Guid ArticleId, string Sku, decimal Quantity, decimal UnitPrice);
+public sealed record DeliveryResponse(
+    Guid Id,
+    Guid SalesOrderId,
+    string Number,
+    AddressSnapshot ShipTo,
+    DateTimeOffset CreatedAt);
+public sealed record InvoiceResponse(
+    Guid Id,
+    Guid SalesOrderId,
+    string Number,
+    decimal NetAmount,
+    DateTimeOffset CreatedAt);

@@ -1,13 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { erpApi } from '../api'
-import type { Article, Customer, CustomerAddress, OrderLine, SalesOrder } from '../api'
+import type {
+  Article,
+  Customer,
+  CustomerAddress,
+  Delivery,
+  Invoice,
+  OrderLine,
+  SalesOrder,
+  SalesOrderSummary,
+} from '../api'
 import { keepOrFirst, nextOrderNumber } from '../format'
 import { createId } from '../id'
 import type { AppRoute } from '../route'
 
 const initialOrderNumber = `SO-${createId().replaceAll('-', '').slice(0, 8).toUpperCase()}`
+const POLL_MS = 2000
+const POLL_MAX_ATTEMPTS = 30
 type WorkflowStep = 'capture' | 'release' | 'deliver' | 'invoice'
+export type OrderListStatusFilter = '' | 'Draft' | 'Released' | 'Cancelled'
 
 type SalesModelArgs = {
   orderId: string | null
@@ -40,7 +52,33 @@ export function useSalesWorkspace({
   const [lines, setLines] = useState<OrderLine[]>([])
   const [order, setOrder] = useState<SalesOrder | null>(null)
   const [step, setStep] = useState<WorkflowStep>('capture')
+  const [orders, setOrders] = useState<SalesOrderSummary[]>([])
+  const [listStatus, setListStatus] = useState<OrderListStatusFilter>('')
+  const [listBusy, setListBusy] = useState(false)
+  const [deliveries, setDeliveries] = useState<Delivery[]>([])
+  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [documentsWaiting, setDocumentsWaiting] = useState(false)
   const loadedOrderId = useRef<string | null>(null)
+  const listRequest = useRef(0)
+
+  async function refreshOrderList(preferredStatus: OrderListStatusFilter = listStatus) {
+    const requestId = ++listRequest.current
+    setListBusy(true)
+    try {
+      const page = await erpApi.salesOrders(preferredStatus || undefined)
+      if (requestId === listRequest.current) setOrders(page)
+    } catch (error) {
+      if (requestId === listRequest.current) {
+        setNotice(error instanceof Error ? error.message : 'Auftragsliste nicht ladbar.')
+      }
+    } finally {
+      if (requestId === listRequest.current) setListBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    void refreshOrderList(listStatus)
+  }, [listStatus])
 
   const [pinnedCustomer, setPinnedCustomer] = useState<Customer | null>(null)
   const customerChoices = useMemo(() => {
@@ -57,7 +95,25 @@ export function useSalesWorkspace({
     : (shippingLinks[0]?.addressId ?? '')
 
   useEffect(() => {
-    if (!orderId || loadedOrderId.current === orderId) return
+    if (!orderId || orderId === 'new') {
+      const enteringNew = orderId === 'new' && loadedOrderId.current !== 'new'
+      loadedOrderId.current = orderId === 'new' ? 'new' : null
+      if (!orderId || enteringNew) {
+        setOrder(null)
+        setDeliveries([])
+        setInvoices([])
+        setDocumentsWaiting(false)
+      }
+      if (enteringNew) {
+        setLines([])
+        setStep('capture')
+        setCustomerId('')
+        setShipToAddressId('')
+        setOrderNumber((current) => nextOrderNumber(current))
+      }
+      return
+    }
+    if (loadedOrderId.current === orderId) return
 
     let cancelled = false
     erpApi.salesOrder(orderId)
@@ -83,6 +139,59 @@ export function useSalesWorkspace({
       cancelled = true
     }
   }, [orderId, setNotice])
+
+  useEffect(() => {
+    if (!order || order.status !== 'Released') {
+      setDeliveries([])
+      setInvoices([])
+      setDocumentsWaiting(false)
+      return
+    }
+
+    const releasedOrderId = order.id
+    let cancelled = false
+    let attempts = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    async function loadDocuments() {
+      attempts += 1
+      try {
+        const [nextDeliveries, nextInvoices] = await Promise.all([
+          erpApi.salesOrderDeliveries(releasedOrderId),
+          erpApi.salesOrderInvoices(releasedOrderId),
+        ])
+        if (cancelled) return
+        setDeliveries(nextDeliveries)
+        setInvoices(nextInvoices)
+        const ready = nextDeliveries.length > 0 && nextInvoices.length > 0
+        setDocumentsWaiting(!ready)
+        if (ready) {
+          setNotice(`Lieferung ${nextDeliveries[0].number} und Rechnung ${nextInvoices[0].number} liegen vor.`)
+          return
+        }
+        if (attempts < POLL_MAX_ATTEMPTS) {
+          timer = setTimeout(() => {
+            void loadDocuments()
+          }, POLL_MS)
+        } else {
+          setDocumentsWaiting(false)
+          setNotice('Lieferung und Rechnung werden noch erzeugt. Später erneut öffnen oder Worker prüfen.')
+        }
+      } catch (error) {
+        if (cancelled) return
+        setDocumentsWaiting(false)
+        setNotice(error instanceof Error ? error.message : 'Belege nicht ladbar.')
+      }
+    }
+
+    setDocumentsWaiting(true)
+    void loadDocuments()
+
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [order, setNotice])
 
   useEffect(() => {
     if (!customerId || customers.some((customer) => customer.id === customerId)) return
@@ -181,6 +290,7 @@ export function useSalesWorkspace({
       setStep('release')
       setNotice(`Auftrag ${saved.orderNumber} gespeichert. Als Nächstes: „Auftrag freigeben“.`)
       navigate({ workspace: 'sales', documentId: saved.id }, 'replace')
+      void refreshOrderList()
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Auftrag konnte nicht gespeichert werden.')
     } finally {
@@ -199,7 +309,8 @@ export function useSalesWorkspace({
       loadedOrderId.current = released.id
       setOrder(released)
       setStep('deliver')
-      setNotice(`Auftrag ${released.orderNumber} freigegeben. Lieferung und Rechnung erzeugt der Worker im Hintergrund.`)
+      setNotice(`Auftrag ${released.orderNumber} freigegeben. Warte auf Lieferung und Rechnung …`)
+      void refreshOrderList()
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Freigabe fehlgeschlagen.')
     } finally {
@@ -217,6 +328,7 @@ export function useSalesWorkspace({
       setWarehouseCode(cancelled.warehouseCode)
       setStep('capture')
       setNotice('Der Auftrag ist storniert. Eine Lieferung wird nicht erzeugt.')
+      void refreshOrderList()
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Storno fehlgeschlagen.')
     } finally {
@@ -224,9 +336,26 @@ export function useSalesWorkspace({
     }
   }
 
-  function startNewOrder() {
+  function openOrderFromList(id: string) {
+    navigate({ workspace: 'sales', documentId: id })
+  }
+
+  function showOrderList() {
     loadedOrderId.current = null
     setOrder(null)
+    setDeliveries([])
+    setInvoices([])
+    setDocumentsWaiting(false)
+    navigate({ workspace: 'sales', documentId: null })
+    void refreshOrderList()
+  }
+
+  function startNewOrder() {
+    loadedOrderId.current = 'new'
+    setOrder(null)
+    setDeliveries([])
+    setInvoices([])
+    setDocumentsWaiting(false)
     setLines([])
     setStep('capture')
     setCustomerId('')
@@ -234,7 +363,7 @@ export function useSalesWorkspace({
     setWarehouseCode('MAIN')
     setOrderNumber((current) => nextOrderNumber(current))
     setNotice('Neuer Auftrag. Position hinzufügen, speichern, dann freigeben.')
-    navigate({ workspace: 'sales', documentId: null })
+    navigate({ workspace: 'sales', documentId: 'new' })
   }
 
   async function reloadShippingLinks(forCustomerId: string, selectFirstIfEmpty: boolean) {
@@ -246,7 +375,11 @@ export function useSalesWorkspace({
     }
   }
 
-  const openRoute: AppRoute = { workspace: 'sales', documentId: order?.id ?? null }
+  const openRoute: AppRoute = {
+    workspace: 'sales',
+    documentId: order?.id ?? (orderId === 'new' ? 'new' : null),
+  }
+  const showingList = !orderId
 
   return {
     notice,
@@ -280,6 +413,16 @@ export function useSalesWorkspace({
     startNewOrder,
     reloadShippingLinks,
     openRoute,
+    showingList,
+    orders,
+    listStatus,
+    setListStatus,
+    listBusy,
+    openOrderFromList,
+    showOrderList,
+    deliveries,
+    invoices,
+    documentsWaiting,
   }
 }
 
