@@ -3,6 +3,7 @@ using Erp.Billing.Domain;
 using Erp.BuildingBlocks;
 using Erp.Persistence;
 using Erp.Platform.Domain;
+using Erp.Sales.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -51,6 +52,7 @@ public sealed class Worker(
                     continue;
                 }
 
+                await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
                 if (message.EventType == "erp.sales-order.released.v1")
                 {
                     var released = JsonSerializer.Deserialize<ReleasedOrderPayload>(
@@ -63,21 +65,34 @@ public sealed class Worker(
                         throw new InvalidOperationException("Released-order payload is missing ship-to snapshot.");
                     }
 
-                    db.Deliveries.Add(new Delivery(
-                        released.TenantId,
-                        released.SalesOrderId,
-                        $"DEL-{released.SalesOrderNumber}",
-                        released.ShipTo));
-                    db.Invoices.Add(new Invoice(
-                        released.TenantId,
-                        released.SalesOrderId,
-                        $"INV-{released.SalesOrderNumber}",
-                        released.NetAmount));
+                    if (!await SalesOrderRowLock.TryLockAsync(db, released.SalesOrderId, cancellationToken))
+                    {
+                        throw new InvalidOperationException("Released-order payload refers to a missing sales order.");
+                    }
+
+                    var status = await db.SalesOrders.AsNoTracking()
+                        .Where(order => order.Id == released.SalesOrderId)
+                        .Select(order => order.Status)
+                        .SingleAsync(cancellationToken);
+                    if (status != SalesOrderStatus.Cancelled)
+                    {
+                        db.Deliveries.Add(new Delivery(
+                            released.TenantId,
+                            released.SalesOrderId,
+                            $"DEL-{released.SalesOrderNumber}",
+                            released.ShipTo));
+                        db.Invoices.Add(new Invoice(
+                            released.TenantId,
+                            released.SalesOrderId,
+                            $"INV-{released.SalesOrderNumber}",
+                            released.NetAmount));
+                    }
                 }
 
                 db.InboxMessages.Add(new InboxMessage(message.Id));
                 message.MarkProcessed();
                 await db.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
                 logger.LogInformation("Processed outbox event {EventId} ({EventType}).", message.Id, message.EventType);
             }
             catch (Exception exception)

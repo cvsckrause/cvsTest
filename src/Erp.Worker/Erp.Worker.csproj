@@ -20,5 +20,6 @@
     <ProjectReference Include="..\Modules\Erp.Platform\Erp.Platform.csproj" />
     <ProjectReference Include="..\Modules\Erp.Billing\Erp.Billing.csproj" />
     <ProjectReference Include="..\Erp.Persistence\Erp.Persistence.csproj" />
+    <ProjectReference Include="..\Modules\Erp.Sales\Erp.Sales.csproj" />
   </ItemGroup>
 </Project>
