@@ -23,7 +23,7 @@ internal static class MasterDataEndpoints
                 .Select(customer => new CustomerResponse(customer.Id, customer.Number, customer.Name))
                 .ToListAsync(cancellationToken);
             return Results.Ok(customers);
-        });
+        }).Produces<List<CustomerResponse>>();
 
         api.MapPost("/customers", async (CreateCustomerRequest request, ITenantContext tenant, ErpDbContext db, CancellationToken cancellationToken) =>
         {
@@ -31,7 +31,7 @@ internal static class MasterDataEndpoints
             db.Customers.Add(customer);
             await db.SaveChangesAsync(cancellationToken);
             return Results.Created($"/api/v1/customers/{customer.Id}", new CustomerResponse(customer.Id, customer.Number, customer.Name));
-        });
+        }).Produces<CustomerResponse>(StatusCodes.Status201Created);
 
         api.MapGet("/customers/{customerId:guid}/addresses", async (
             Guid customerId,
@@ -71,7 +71,7 @@ internal static class MasterDataEndpoints
                 .ToList();
 
             return Results.Ok(response);
-        });
+        }).Produces<List<CustomerAddressResponse>>().Produces(StatusCodes.Status404NotFound);
 
         api.MapPost("/customers/{customerId:guid}/addresses", async (
             Guid customerId,
@@ -111,7 +111,7 @@ internal static class MasterDataEndpoints
             return Results.Created(
                 $"/api/v1/customers/{customerId}/addresses",
                 new CustomerAddressResponse(link.Id, link.CustomerId, link.AddressId, link.Role.ToString(), ToAddressResponse(address)));
-        });
+        }).Produces<CustomerAddressResponse>(StatusCodes.Status201Created);
 
         api.MapGet("/addresses", async (ErpDbContext db, string? after, int? limit, string? q, CancellationToken cancellationToken) =>
         {
@@ -140,7 +140,7 @@ internal static class MasterDataEndpoints
 
             var addresses = await query.Take(pageSize).ToListAsync(cancellationToken);
             return Results.Ok(addresses.Select(ToAddressResponse).ToList());
-        });
+        }).Produces<List<AddressResponse>>();
 
         api.MapPost("/addresses", async (CreateAddressRequest request, ITenantContext tenant, ErpDbContext db, CancellationToken cancellationToken) =>
         {
@@ -155,13 +155,13 @@ internal static class MasterDataEndpoints
             db.Addresses.Add(address);
             await db.SaveChangesAsync(cancellationToken);
             return Results.Created($"/api/v1/addresses/{address.Id}", ToAddressResponse(address));
-        });
+        }).Produces<AddressResponse>(StatusCodes.Status201Created);
 
         api.MapGet("/addresses/{id:guid}", async (Guid id, ErpDbContext db, CancellationToken cancellationToken) =>
         {
             var address = await db.Addresses.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
             return address is null ? Results.NotFound() : Results.Ok(ToAddressResponse(address));
-        });
+        }).Produces<AddressResponse>().Produces(StatusCodes.Status404NotFound);
 
         api.MapPut("/addresses/{id:guid}", async (Guid id, UpdateAddressRequest request, ErpDbContext db, CancellationToken cancellationToken) =>
         {
@@ -177,7 +177,7 @@ internal static class MasterDataEndpoints
                 request.AdditionalLine);
             await db.SaveChangesAsync(cancellationToken);
             return Results.Ok(ToAddressResponse(address));
-        });
+        }).Produces<AddressResponse>().Produces(StatusCodes.Status404NotFound);
 
         api.MapGet("/articles", async (ErpDbContext db, string? after, int? limit, string? q, CancellationToken cancellationToken) =>
         {
@@ -200,7 +200,7 @@ internal static class MasterDataEndpoints
                 .Select(article => new ArticleResponse(article.Id, article.Sku, article.Name, article.SalesPrice))
                 .ToListAsync(cancellationToken);
             return Results.Ok(articles);
-        });
+        }).Produces<List<ArticleResponse>>();
 
         api.MapPost("/articles", async (CreateArticleRequest request, ITenantContext tenant, ErpDbContext db, CancellationToken cancellationToken) =>
         {
@@ -209,7 +209,7 @@ internal static class MasterDataEndpoints
             db.StockBalances.Add(StockBalance.Create(tenant.TenantId, article.Id, request.WarehouseCode ?? "MAIN", request.OpeningStock));
             await db.SaveChangesAsync(cancellationToken);
             return Results.Created($"/api/v1/articles/{article.Id}", new ArticleResponse(article.Id, article.Sku, article.Name, article.SalesPrice));
-        });
+        }).Produces<ArticleResponse>(StatusCodes.Status201Created);
 
         api.MapGet("/articles/{id:guid}", async (Guid id, ErpDbContext db, CancellationToken cancellationToken) =>
         {
@@ -217,7 +217,7 @@ internal static class MasterDataEndpoints
             return article is null
                 ? Results.NotFound()
                 : Results.Ok(new ArticleResponse(article.Id, article.Sku, article.Name, article.SalesPrice));
-        });
+        }).Produces<ArticleResponse>().Produces(StatusCodes.Status404NotFound);
 
         api.MapPut("/articles/{id:guid}", async (Guid id, UpdateArticleRequest request, ErpDbContext db, CancellationToken cancellationToken) =>
         {
@@ -227,7 +227,7 @@ internal static class MasterDataEndpoints
             article.Update(request.Name, request.SalesPrice);
             await db.SaveChangesAsync(cancellationToken);
             return Results.Ok(new ArticleResponse(article.Id, article.Sku, article.Name, article.SalesPrice));
-        });
+        }).Produces<ArticleResponse>().Produces(StatusCodes.Status404NotFound);
 
         return api;
     }

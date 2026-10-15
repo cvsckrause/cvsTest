@@ -18,3 +18,4 @@ coverage/
 !.env.example
 !.env.development
 cdk.out/
+.artifacts/
