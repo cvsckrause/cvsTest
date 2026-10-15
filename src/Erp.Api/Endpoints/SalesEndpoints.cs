@@ -70,14 +70,14 @@ internal static class SalesEndpoints
             db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, Idempotency.CreateSalesOrder, order.Id));
             await db.SaveChangesAsync(cancellationToken);
             return Results.Created($"/api/v1/sales-orders/{order.Id}", ToResponse(order));
-        });
+        }).Produces<SalesOrderResponse>(StatusCodes.Status201Created);
 
         api.MapGet("/sales-orders/{id:guid}", async (Guid id, ErpDbContext db, CancellationToken cancellationToken) =>
         {
             var order = await db.SalesOrders.AsNoTracking().Include(item => item.Lines)
                 .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
             return order is null ? Results.NotFound() : Results.Ok(ToResponse(order));
-        });
+        }).Produces<SalesOrderResponse>().Produces(StatusCodes.Status404NotFound);
 
         api.MapPost("/sales-orders/{id:guid}/release", async (
             Guid id,
@@ -139,7 +139,7 @@ internal static class SalesEndpoints
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return Results.Ok(ToResponse(order));
-        });
+        }).Produces<SalesOrderResponse>();
 
         return api;
     }

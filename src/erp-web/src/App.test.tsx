@@ -56,7 +56,19 @@ const movement = {
   occurredAt: '2026-10-14T09:00:00.000Z',
 }
 
+const salesOrder = {
+  id: 'order-1',
+  orderNumber: 'SO-1001',
+  customerId: 'customer-1',
+  shipToAddressId: 'address-1',
+  shipTo: address,
+  status: 'Released',
+  netAmount: 799,
+  lines: [{ articleId: 'article-1', sku: 'BIKE-001', quantity: 1, unitPrice: 799 }],
+}
+
 function route(url: string) {
+  if (url.includes('/sales-orders/')) return jsonResponse(salesOrder)
   if (url.includes('/customers/') && url.includes('/addresses')) return jsonResponse([shippingLink])
   if (url.includes('/addresses')) return jsonResponse([address])
   if (url.includes('/customers')) return jsonResponse([customer])
@@ -72,6 +84,7 @@ afterEach(() => {
 })
 
 beforeEach(() => {
+  window.history.replaceState(null, '', '/')
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => route(String(input))))
 })
 
@@ -223,4 +236,29 @@ test('does not mint a new Idempotency-Key when stock refresh fails after a succe
   const secondKey = new Headers(receiptCalls[1][1]?.headers).get('Idempotency-Key')
   expect(firstKey).toBeTruthy()
   expect(secondKey).not.toBe(firstKey)
+})
+
+test('opens the workspace and document named in the URL', async () => {
+  window.history.replaceState(null, '', '/sales/order-1')
+  render(<App />)
+
+  expect(await screen.findByText('SO-1001')).toBeInTheDocument()
+  expect(screen.getByText('Freigegeben')).toBeInTheDocument()
+  expect(window.location.pathname).toBe('/sales/order-1')
+
+  window.history.pushState(null, '', '/stamm/articles/article-1')
+  window.dispatchEvent(new PopStateEvent('popstate'))
+  expect(await screen.findByRole('heading', { name: 'Artikel bearbeiten' })).toBeInTheDocument()
+  expect(screen.getByDisplayValue('BIKE-001')).toBeInTheDocument()
+})
+
+test('puts the open article into the URL', async () => {
+  render(<App />)
+  fireEvent.click(screen.getByTitle('Stammdaten'))
+  await screen.findByRole('heading', { name: 'Artikel anlegen' })
+
+  fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten' }))
+
+  expect(window.location.pathname).toBe('/stamm/articles/article-1')
+  expect(screen.getByRole('heading', { name: 'Artikel bearbeiten' })).toBeInTheDocument()
 })

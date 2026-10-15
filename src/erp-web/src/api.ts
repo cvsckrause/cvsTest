@@ -1,88 +1,25 @@
 import { authHeaders } from './auth/runtime'
 import { createId } from './id'
+import type { components } from './api.generated'
 
-export type Customer = {
-  id: string
-  number: string
-  name: string
-}
+type Schemas = components['schemas']
 
-export type Address = {
-  id: string
-  name: string
-  street: string
-  postalCode: string
-  city: string
-  countryCode: string
-  additionalLine?: string | null
-}
+type JsonNumber<T> = [number] extends [T] ? ([string] extends [T] ? number : T) : T
+type Json<T> = [T] extends [readonly (infer Item)[]]
+  ? Json<Item>[]
+  : [T] extends [object]
+    ? { [Key in keyof T]: Json<T[Key]> }
+    : JsonNumber<T>
 
-export type CustomerAddress = {
-  id: string
-  customerId: string
-  addressId: string
-  role: string
-  address: Address
-}
-
-export type Article = {
-  id: string
-  sku: string
-  name: string
-  salesPrice: number
-}
-
-export type OrderLine = {
-  articleId: string
-  sku: string
-  quantity: number
-  unitPrice: number
-}
-
-export type SalesOrder = {
-  id: string
-  orderNumber: string
-  customerId: string
-  shipToAddressId: string
-  shipTo: Address
-  status: string
-  netAmount: number
-  lines: OrderLine[]
-}
-
-export type StockBalanceRow = {
-  articleId: string
-  sku: string
-  name: string
-  warehouseCode: string
-  onHand: number
-  reserved: number
-  available: number
-}
-
-export type StockMovementRow = {
-  id: string
-  articleId: string
-  sku: string
-  name: string
-  warehouseCode: string
-  quantity: number
-  movementType: string
-  reference: string | null
-  createdBy: string
-  occurredAt: string
-}
-
-export type StockReceipt = {
-  id: string
-  articleId: string
-  sku: string
-  warehouseCode: string
-  quantity: number
-  reference: string | null
-  occurredAt: string
-  replayed: boolean
-}
+export type Customer = Json<Schemas['CustomerResponse']>
+export type Address = Json<Schemas['AddressResponse']>
+export type CustomerAddress = Json<Schemas['CustomerAddressResponse']>
+export type Article = Json<Schemas['ArticleResponse']>
+export type OrderLine = Json<Schemas['SalesOrderLineResponse']>
+export type SalesOrder = Json<Schemas['SalesOrderResponse']>
+export type StockBalanceRow = Json<Schemas['StockResponse']>
+export type StockMovementRow = Json<Schemas['StockMovementResponse']>
+export type StockReceipt = Json<Schemas['StockReceiptResponse']>
 
 const baseUrl = import.meta.env.VITE_API_URL ?? '/api/v1'
 
@@ -199,4 +136,7 @@ export const erpApi = {
       method: 'POST',
       headers: { 'Idempotency-Key': createId() },
     }),
+  salesOrder: (id: string) => request<SalesOrder>(`/sales-orders/${id}`),
+  article: (id: string) => request<Article>(`/articles/${id}`),
+  address: (id: string) => request<Address>(`/addresses/${id}`),
 }

@@ -32,6 +32,16 @@ jobs:
       - name: Test
         run: dotnet test Erp.slnx -c Release --no-build --verbosity normal
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Check OpenAPI document is current
+        run: |
+          node scripts/export-openapi.mjs
+          git diff --exit-code -- openapi/v1.json
+
   web:
     runs-on: ubuntu-latest
     defaults:
@@ -49,6 +59,11 @@ jobs:
 
       - name: Install
         run: npm ci
+
+      - name: Check generated API types
+        run: |
+          npm run gen:api
+          git diff --exit-code -- src/api.generated.ts
 
       - name: Lint
         run: npm run lint

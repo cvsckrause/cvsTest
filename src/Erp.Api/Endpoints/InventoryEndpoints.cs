@@ -27,7 +27,7 @@ internal static class InventoryEndpoints
                     balance.OnHand - balance.Reserved))
                 .ToListAsync(cancellationToken);
             return Results.Ok(stock);
-        });
+        }).Produces<List<StockResponse>>();
 
         api.MapGet("/stock/movements", async (ErpDbContext db, int? limit, CancellationToken cancellationToken) =>
         {
@@ -50,7 +50,7 @@ internal static class InventoryEndpoints
                 .Take(pageSize)
                 .ToListAsync(cancellationToken);
             return Results.Ok(movements);
-        });
+        }).Produces<List<StockMovementResponse>>();
 
         api.MapPost("/stock/receipts", async (
             CreateStockReceiptRequest request,
@@ -144,7 +144,7 @@ internal static class InventoryEndpoints
                     movement.Reference,
                     movement.OccurredAt,
                     Replayed: false));
-        });
+        }).Produces<StockReceiptResponse>(StatusCodes.Status201Created);
 
         return api;
     }
