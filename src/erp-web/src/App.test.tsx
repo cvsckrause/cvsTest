@@ -311,6 +311,7 @@ test('sends NEBEN when the warehouse field is neben', async () => {
   vi.stubGlobal('fetch', fetchMock)
 
   render(<App />)
+  await openNewOrder()
   await screen.findByRole('option', { name: '10000 · Nordrad GmbH' })
   await screen.findByRole('option', { name: 'Nordrad GmbH · 20095 Hamburg' })
   fireEvent.change(screen.getByLabelText('Lager'), { target: { value: 'neben' } })

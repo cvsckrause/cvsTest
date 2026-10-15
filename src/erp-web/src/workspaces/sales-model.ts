@@ -318,7 +318,7 @@ export function useSalesWorkspace({
     }
   }
 
-async function cancelOrder() {
+  async function cancelOrder() {
     if (!order || order.status === 'Cancelled') return
     setBusy(true)
     try {

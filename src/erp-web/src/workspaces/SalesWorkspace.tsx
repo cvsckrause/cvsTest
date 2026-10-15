@@ -250,7 +250,7 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
                 <button className="secondary" type="button" onClick={showOrderList}>Zur Auftragsliste</button>
               </>
             )}
-{order?.status === 'Cancelled' && (
+            {order?.status === 'Cancelled' && (
               <>
                 <p className="released-note">Der Auftrag ist storniert. Eine Lieferung wird nicht erzeugt.</p>
                 <button className="secondary" type="button" onClick={startNewOrder}>Neuen Auftrag erfassen</button>
