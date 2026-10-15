@@ -27,7 +27,11 @@ List prices, idle, `eu-north-1`, ~730 hours. Public IPv4 is in-scope because thi
 
 Estimated idle cost: **USD 55–70 / month**. AWS Budget: **USD 100** (alarms above the idle band; destroy when not in use). Destroy instead of leaving it running overnight.
 
-Images are built in CodeBuild (`erp-dev-images`) and pushed to ECR (`erp-dev-api`, `erp-dev-worker`, `erp-dev-migrator`). Local Docker is not required for synth or deploy.
+Images are built in CodeBuild (`erp-dev-images`) and pushed to ECR (`erp-dev-api`, `erp-dev-worker`, `erp-dev-migrator`). Local Docker is not required for synth or deploy. When building the API image locally, pass the short git SHA so the UI stamp (R-21) is accurate:
+
+```powershell
+docker build -f src/Erp.Api/Dockerfile --build-arg VITE_APP_GIT_SHA=$(git rev-parse --short HEAD) -t <account>.dkr.ecr.eu-north-1.amazonaws.com/erp-dev-api:latest .
+```
 
 ## Deploy
 
@@ -48,9 +52,11 @@ aws ecs run-task --cluster <ClusterName> --launch-type FARGATE --task-definition
 
 The UI is baked into the API image and served from CloudFront (same origin as `/api/v1`). Open `https://<DistributionDomainName>/`. CloudFront redirects HTTP to HTTPS and uses the default `*.cloudfront.net` certificate. `/api/*` is not cached. The ALB stays HTTP and accepts port 80 only from the CloudFront origin-facing prefix list, so a direct request to the ALB from the internet is refused. Local Vite (`npm run dev --prefix src/erp-web`) remains optional for UI-only development and still proxies `/api` via `ERP_API_ORIGIN`.
 
+The shell status bar shows a build stamp (`version · built-at UTC · short git SHA`) so you can tell which image is live without opening ECR or ECS.
+
 Smoke against `https://<DistributionDomainName>`:
 
-1. Open `https://<DistributionDomainName>/` and confirm the order-entry shell loads. Confirm `http://<AlbDnsName>/` does not connect from the internet.
+1. Open `https://<DistributionDomainName>/` and confirm the order-entry shell loads and the build stamp matches the rolled image. Confirm `http://<AlbDnsName>/` does not connect from the internet.
 2. `GET /health`
 3. `POST /api/v1/customers` then `POST /api/v1/articles`
 4. `POST /api/v1/sales-orders` with `Idempotency-Key`

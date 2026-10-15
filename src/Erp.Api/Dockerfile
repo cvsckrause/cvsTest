@@ -3,7 +3,14 @@ WORKDIR /web
 COPY src/erp-web/package.json src/erp-web/package-lock.json ./
 RUN npm ci
 COPY src/erp-web/ ./
-RUN npm run build
+# Pass at docker build: --build-arg VITE_APP_GIT_SHA=$(git rev-parse --short HEAD)
+ARG VITE_APP_GIT_SHA=unknown
+ARG VITE_APP_BUILD_TIME=
+ENV VITE_APP_GIT_SHA=$VITE_APP_GIT_SHA
+RUN VITE_APP_VERSION="$(node -p "require('./package.json').version")" \
+    VITE_APP_BUILD_TIME="${VITE_APP_BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
+    VITE_APP_GIT_SHA="${VITE_APP_GIT_SHA:-unknown}" \
+    npm run build
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
