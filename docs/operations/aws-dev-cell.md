@@ -26,7 +26,11 @@ List prices, idle, `eu-north-1`, ~730 hours. Public IPv4 is in-scope because thi
 
 Estimated idle cost: **USD 55–70 / month**. AWS Budget: **USD 100** (alarms above the idle band; destroy when not in use). Destroy instead of leaving it running overnight.
 
-Images are built in CodeBuild (`erp-dev-images`) and pushed to ECR (`erp-dev-api`, `erp-dev-worker`, `erp-dev-migrator`). Local Docker is not required for synth or deploy.
+Images are built in CodeBuild (`erp-dev-images`) and pushed to ECR (`erp-dev-api`, `erp-dev-worker`, `erp-dev-migrator`). Local Docker is not required for synth or deploy. When building the API image locally, pass the short git SHA so the UI stamp (R-21) is accurate:
+
+```powershell
+docker build -f src/Erp.Api/Dockerfile --build-arg VITE_APP_GIT_SHA=$(git rev-parse --short HEAD) -t <account>.dkr.ecr.eu-north-1.amazonaws.com/erp-dev-api:latest .
+```
 
 ## Deploy
 

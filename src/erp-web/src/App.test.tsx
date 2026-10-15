@@ -103,6 +103,7 @@ test('renders the order-entry workstation with ship-to', async () => {
   expect(await screen.findByRole('option', { name: '10000 · Nordrad GmbH' })).toBeInTheDocument()
   expect(await screen.findByRole('option', { name: 'BIKE-001 · Cityrad' })).toBeInTheDocument()
   expect(await screen.findByRole('option', { name: 'Nordrad GmbH · 20095 Hamburg' })).toBeInTheDocument()
+  expect(screen.getByLabelText(/^Build /)).toHaveTextContent('vdev · local · unknown')
 })
 
 test('opens stamm workspace for articles and addresses', async () => {
