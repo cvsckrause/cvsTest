@@ -295,14 +295,18 @@ Sync points: R-02 merges before any other `Program.cs` change. R-11 merges befor
 
 **Scope.**
 - Split into `SalesWorkspace`, `StammWorkspace`, `LagerWorkspace`, and a shell.
+- The browser URL names the open workspace and, when a document is open, that document, so a copied link opens the same view. Accepted 2026-10-15.
 - Generate types from `openapi/v1.json` (for example with `openapi-typescript`) in an `npm run gen:api` script.
 - A CI check fails if the generated file is stale.
 - Fix the lint warnings.
 
 **Acceptance.**
 - Behavior is unchanged and all Vitest tests pass.
+- A copied URL opens the same workspace and the same open document.
 - Lint is clean.
 - Changing an API record without regenerating the types fails CI.
+
+**Out of scope.** Article long text, how many lines a grid shows, and movable columns. Those wait until this shell exists (see the 2026-10-15 parking lot).
 
 ### R-11 — Make the worker multi-tenant, with safe claiming, bounded retries, and a dead-letter state
 
@@ -357,11 +361,14 @@ Sync points: R-02 merges before any other `Program.cs` change. R-11 merges befor
 - `GET /api/v1/sales-orders` with keyset pagination and status filter.
 - `GET /api/v1/sales-orders/{id}/deliveries` and `/invoices`.
 - `GET /api/v1/invoices/{id}`.
-- The UI order list, plus steps 3 and 4 showing real documents, with polling until the worker has created them.
+- The UI order list, plus steps 3 and 4 showing real documents, with polling until the worker has created them. The list is how an operator finds an order, including one just created. The status filter is the search in this issue. Accepted 2026-10-15.
 
 **Acceptance.**
 - Releasing an order in the UI shows the delivery and invoice numbers without a manual reload.
+- A newly created order appears in the list and can be opened from it.
 - Tenant isolation is covered by R-05-style tests.
+
+**Out of scope.** Search across articles, stock, and other documents.
 
 ### R-14 — Add per-tenant number ranges with gapless invoice numbers
 
@@ -493,13 +500,29 @@ These are deliberately not broken down yet. Each becomes an epic issue and gets 
 
 | Epic | Why | Builds on |
 | --- | --- | --- |
-| **E-1 Einkauf basic:** supplier, purchase order, goods receipt against a purchase order | Closes the trading cycle; Lager slice A deferred purchasing-driven inbound | R-12, R-14 |
+| **E-1 Einkauf basic:** supplier, purchase order, goods receipt against a purchase order | Closes the trading cycle. Scope accepted 2026-10-15: supplier, purchase order with positions from the article master, goods receipt transferred by hand from that order, optional batch and cost price per base unit, and sales-line margin from the chosen batch. Email sending waits until a document exists. | R-12, R-14 |
 | **E-2 E-Rechnung output:** XRechnung / ZUGFeRD (EN 16931) | German B2B e-invoice obligation. Receiving has been required since 01.01.2025. Issuing becomes required from 01.01.2027 for businesses with prior-year turnover above EUR 800k, and for everyone from 01.01.2028. That makes it a gating requirement for DACH sales. | R-16 |
 | **E-3 Gutschriften / Retouren** | Corrections to immutable invoices; customer returns rebooking stock | R-12, R-16 |
 | **E-4 Inventur** (stocktaking) | Year-end count is required for trading companies; uses the movement ledger | R-12 |
 | **E-5 DATEV export** | Hands bookings to the tax advisor; typical DACH mid-market expectation | R-16 |
 
 Accepted (D5): E-2 is the most time-critical because of the regulation, but it can only start after R-14 and R-16. E-1 and E-2 run as the two lanes of milestone `M3 Einkauf + E-Rechnung`: Dev A on E-2 (format, validation, document storage in S3), Dev B on E-1 (domain and UI). E-3 to E-5 stay in the backlog without a milestone.
+
+### Accepted 2026-10-15 (strategy meeting)
+
+The current wave order stays. These notes record where the meeting feedback landed.
+
+| Feedback | Where it lands |
+| --- | --- |
+| Shareable URL for the current view | R-10 |
+| Find an order that was just created | R-13 (the order list and its status filter) |
+| Supplier, purchase order from the article master, hand-transferred goods receipt, optional batch and cost price, sales-line margin from the chosen batch | E-1 |
+| ZUGFeRD / XRechnung invoice | E-2, unchanged |
+| Email a purchase order | After a document exists; not part of the first E-1 cut |
+
+Parked until someone names the first three items: data visualization, interfaces, document chain, and personalization (Torben, 2026-10-15).
+
+Parked until the R-10 shell exists: article long text, how many lines a grid shows, and movable columns.
 
 ## Decisions
 
