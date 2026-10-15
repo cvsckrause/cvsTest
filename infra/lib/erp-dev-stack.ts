@@ -1,4 +1,6 @@
 import * as cdk from 'aws-cdk-lib'
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront'
+import * as origins from 'aws-cdk-lib/aws-cloudfront-origins'
 import * as cognito from 'aws-cdk-lib/aws-cognito'
 import * as ec2 from 'aws-cdk-lib/aws-ec2'
 import * as ecr from 'aws-cdk-lib/aws-ecr'
@@ -111,14 +113,15 @@ export class ErpDevStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     })
 
+    const localUrls = ['http://localhost:5173/', 'http://127.0.0.1:5173/']
     const userPoolClient = userPool.addClient('SpaClient', {
       generateSecret: false,
       authFlows: { userSrp: true },
       oAuth: {
         flows: { authorizationCodeGrant: true },
         scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
-        callbackUrls: ['http://localhost:5173/', 'http://127.0.0.1:5173/'],
-        logoutUrls: ['http://localhost:5173/', 'http://127.0.0.1:5173/'],
+        callbackUrls: localUrls,
+        logoutUrls: localUrls,
       },
       preventUserExistenceErrors: true,
     })
@@ -249,10 +252,21 @@ export class ErpDevStack extends cdk.Stack {
 
     const albSecurityGroup = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
       vpc,
-      description: 'Public HTTP access to the ERP API',
+      description: 'HTTP from CloudFront only',
       allowAllOutbound: true,
     })
-    albSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'HTTP from the internet')
+    // eu-north-1 managed list com.amazonaws.global.cloudfront.origin-facing.
+    // 46 entries, under the 60-rule security group quota. Pinning the id keeps synth credential-free.
+    const cloudFrontOriginPrefixList = ec2.PrefixList.fromPrefixListId(
+      this,
+      'CloudFrontOriginPrefixList',
+      'pl-fab65393',
+    )
+    albSecurityGroup.addIngressRule(
+      ec2.Peer.prefixList(cloudFrontOriginPrefixList.prefixListId),
+      ec2.Port.tcp(80),
+      'HTTP from CloudFront',
+    )
 
     const apiSecurityGroup = new ec2.SecurityGroup(this, 'ApiSecurityGroup', {
       vpc,
@@ -312,6 +326,34 @@ export class ErpDevStack extends cdk.Stack {
       open: false,
     })
 
+    const origin = new origins.LoadBalancerV2Origin(alb, {
+      protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY,
+      httpPort: 80,
+    })
+    const apiBehavior: cloudfront.BehaviorOptions = {
+      origin,
+      viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+      cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+      originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+    }
+    const distribution = new cloudfront.Distribution(this, 'FrontDoor', {
+      comment: 'HTTPS front door for the ERP dev cell',
+      priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
+      defaultBehavior: {
+        ...apiBehavior,
+        allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
+      },
+      additionalBehaviors: {
+        '/api/*': apiBehavior,
+      },
+    })
+    const publicBaseUrl = `https://${distribution.distributionDomainName}`
+    const hostedUrls = [...localUrls, `${publicBaseUrl}/`]
+    const spaClient = userPoolClient.node.defaultChild as cognito.CfnUserPoolClient
+    spaClient.callbackUrLs = hostedUrls
+    spaClient.logoutUrLs = hostedUrls
+
     listener.addTargets('ApiTargets', {
       port: 8080,
       protocol: elbv2.ApplicationProtocol.HTTP,
@@ -324,9 +366,10 @@ export class ErpDevStack extends cdk.Stack {
       deregistrationDelay: cdk.Duration.seconds(10),
     })
 
-    new cdk.CfnOutput(this, 'ApiUrl', { value: `http://${alb.loadBalancerDnsName}` })
-    new cdk.CfnOutput(this, 'HealthUrl', { value: `http://${alb.loadBalancerDnsName}/health` })
-    new cdk.CfnOutput(this, 'OpenApiUrl', { value: `http://${alb.loadBalancerDnsName}/openapi/v1.json` })
+    new cdk.CfnOutput(this, 'ApiUrl', { value: publicBaseUrl })
+    new cdk.CfnOutput(this, 'HealthUrl', { value: `${publicBaseUrl}/health` })
+    new cdk.CfnOutput(this, 'OpenApiUrl', { value: `${publicBaseUrl}/openapi/v1.json` })
+    new cdk.CfnOutput(this, 'DistributionDomainName', { value: distribution.distributionDomainName })
     new cdk.CfnOutput(this, 'UserPoolId', { value: userPool.userPoolId })
     new cdk.CfnOutput(this, 'UserPoolClientId', { value: userPoolClient.userPoolClientId })
     new cdk.CfnOutput(this, 'CognitoAuthority', {

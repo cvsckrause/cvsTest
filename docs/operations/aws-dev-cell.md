@@ -8,7 +8,7 @@ Lowest-cost disposable environment for the trading slice. It is not production-s
 | --- | --- |
 | `eu-central-1` | `eu-north-1` |
 | Private Fargate, no public task IPs, NAT/VPC endpoints | Public subnets + public task IPs, no NAT Gateway |
-| Multi-AZ RDS, two API tasks, WAF/CloudFront | Single-AZ `db.t4g.micro`, one API task, HTTP ALB only |
+| Multi-AZ RDS, two API tasks, WAF, custom domain | Single-AZ `db.t4g.micro`, one API task, CloudFront default certificate in front of an HTTP ALB |
 | Cognito required for API access | Cognito is provisioned; API still uses the development tenant until PKCE is wired |
 
 ## Continuously billed resources
@@ -22,6 +22,7 @@ List prices, idle, `eu-north-1`, ~730 hours. Public IPv4 is in-scope because thi
 | Two Fargate tasks (0.25 vCPU / 512 MB, x86) | USD 18–20 |
 | Two Fargate public IPv4 addresses | USD 7 |
 | KMS + Secrets Manager + logs | USD 2–4 |
+| CloudFront (default certificate, price class 100) | usage-priced, near zero idle |
 | SQS, EventBridge, S3, Cognito, ECR | usage-priced, near zero idle |
 
 Estimated idle cost: **USD 55–70 / month**. AWS Budget: **USD 100** (alarms above the idle band; destroy when not in use). Destroy instead of leaving it running overnight.
@@ -49,13 +50,13 @@ After deploy, run the migrator once (subnet and security group IDs come from sta
 aws ecs run-task --cluster <ClusterName> --launch-type FARGATE --task-definition <MigratorTaskDefinitionArn> --network-configuration "awsvpcConfiguration={subnets=[<public-subnet>],securityGroups=[<MigratorSecurityGroupId>],assignPublicIp=ENABLED}"
 ```
 
-The UI is baked into the API image and served from the ALB root (same origin as `/api/v1`). Open `http://<AlbDnsName>/` in the browser — use **http**, not https (this cell has no ACM certificate). Local Vite (`npm run dev --prefix src/erp-web`) remains optional for UI-only development and still proxies `/api` via `ERP_API_ORIGIN`.
+The UI is baked into the API image and served from CloudFront (same origin as `/api/v1`). Open `https://<DistributionDomainName>/`. CloudFront redirects HTTP to HTTPS and uses the default `*.cloudfront.net` certificate. `/api/*` is not cached. The ALB stays HTTP and accepts port 80 only from the CloudFront origin-facing prefix list, so a direct request to the ALB from the internet is refused. Local Vite (`npm run dev --prefix src/erp-web`) remains optional for UI-only development and still proxies `/api` via `ERP_API_ORIGIN`.
 
-After **R-21**, the shell status bar shows a build stamp (`version · built-at UTC · short git SHA`) so you can tell which image is live without opening ECR or ECS.
+The shell status bar shows a build stamp (`version · built-at UTC · short git SHA`) so you can tell which image is live without opening ECR or ECS.
 
-Smoke:
+Smoke against `https://<DistributionDomainName>`:
 
-1. Open `http://<AlbDnsName>/` and confirm the order-entry shell loads (and, once R-21 is done, that the build stamp is present and matches the rolled image)
+1. Open `https://<DistributionDomainName>/` and confirm the order-entry shell loads and the build stamp matches the rolled image. Confirm `http://<AlbDnsName>/` does not connect from the internet.
 2. `GET /health`
 3. `POST /api/v1/customers` then `POST /api/v1/articles`
 4. `POST /api/v1/sales-orders` with `Idempotency-Key`
