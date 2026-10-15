@@ -16,6 +16,8 @@ if (developmentIdentity.Enabled && !builder.Environment.IsDevelopment() && authe
         "DevelopmentIdentity:Enabled is only allowed when the environment is Development or authentication is disabled.");
 }
 
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddOpenApi();
 builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy => policy
@@ -41,6 +43,7 @@ if (authenticationEnabled)
 }
 
 var app = builder.Build();
+app.UseExceptionHandler();
 if (developmentIdentity.Enabled && !app.Environment.IsDevelopment())
 {
     app.Logger.LogWarning(

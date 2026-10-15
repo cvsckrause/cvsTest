@@ -64,7 +64,7 @@ internal static class InventoryEndpoints
             if (request.Quantity <= 0) return Results.BadRequest(new { error = "Quantity must be positive." });
 
             var existing = await db.IdempotencyRecords.AsNoTracking()
-                .SingleOrDefaultAsync(record => record.Operation == "StockGoodsReceipt" && record.Key == idempotencyKey, cancellationToken);
+                .SingleOrDefaultAsync(record => record.Operation == Idempotency.StockGoodsReceipt && record.Key == idempotencyKey, cancellationToken);
             if (existing is not null)
             {
                 var prior = await db.StockMovements.AsNoTracking()
@@ -128,7 +128,7 @@ internal static class InventoryEndpoints
                 movement.Id,
                 auditPayload,
                 httpContext.TraceIdentifier));
-            db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, "StockGoodsReceipt", movement.Id));
+            db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, Idempotency.StockGoodsReceipt, movement.Id));
 
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);

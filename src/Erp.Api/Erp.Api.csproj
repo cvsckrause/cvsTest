@@ -12,6 +12,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Erp.Api.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Erp.BuildingBlocks\Erp.BuildingBlocks.csproj" />
     <ProjectReference Include="..\Modules\Erp.Platform\Erp.Platform.csproj" />
     <ProjectReference Include="..\Modules\Erp.MasterData\Erp.MasterData.csproj" />
