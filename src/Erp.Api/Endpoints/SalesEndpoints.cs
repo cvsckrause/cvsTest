@@ -59,7 +59,8 @@ internal static class SalesEndpoints
                 request.CustomerId,
                 request.OrderNumber,
                 request.ShipToAddressId,
-                shipToAddress.ToSnapshot());
+                shipToAddress.ToSnapshot(),
+                request.WarehouseCode ?? "MAIN");
             foreach (var line in request.Lines)
             {
                 var article = articles[line.ArticleId];
@@ -94,14 +95,26 @@ internal static class SalesEndpoints
             if (existing is not null) return Results.Ok(new { id = existing.ResourceId, replayed = true });
 
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            if (!await SalesOrderRowLock.TryLockAsync(db, id, cancellationToken))
+            {
+                return Results.NotFound();
+            }
+
             var order = await db.SalesOrders.Include(item => item.Lines)
                 .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
             if (order is null) return Results.NotFound();
+            if (order.Status != SalesOrderStatus.Draft)
+            {
+                throw new InvalidOperationException(
+                    order.Status == SalesOrderStatus.Cancelled
+                        ? "Cancelled orders cannot be released."
+                        : "Released orders cannot be changed.");
+            }
 
             foreach (var line in order.Lines)
             {
                 var stock = await db.StockBalances.SingleOrDefaultAsync(
-                    balance => balance.ArticleId == line.ArticleId && balance.WarehouseCode == "MAIN",
+                    balance => balance.ArticleId == line.ArticleId && balance.WarehouseCode == order.WarehouseCode,
                     cancellationToken);
                 if (stock is null || stock.Available < line.Quantity)
                 {
@@ -141,6 +154,81 @@ internal static class SalesEndpoints
             return Results.Ok(ToResponse(order));
         }).Produces<SalesOrderResponse>();
 
+        api.MapPost("/sales-orders/{id:guid}/cancel", async (
+            Guid id,
+            HttpContext httpContext,
+            ITenantContext tenant,
+            ErpDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var idempotencyKey = Idempotency.RequireKey(httpContext);
+            if (idempotencyKey is null) return Results.BadRequest(new { error = "Idempotency-Key header is required." });
+
+            var existing = await db.IdempotencyRecords.AsNoTracking()
+                .SingleOrDefaultAsync(record => record.Operation == Idempotency.CancelSalesOrder && record.Key == idempotencyKey, cancellationToken);
+            if (existing is not null) return Results.Ok(new { id = existing.ResourceId, replayed = true });
+
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            if (!await SalesOrderRowLock.TryLockAsync(db, id, cancellationToken))
+            {
+                return Results.NotFound();
+            }
+
+            var order = await db.SalesOrders.Include(item => item.Lines)
+                .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+            if (order is null) return Results.NotFound();
+
+            if (await db.Deliveries.AnyAsync(delivery => delivery.SalesOrderId == order.Id, cancellationToken))
+            {
+                throw new InvalidOperationException("Delivered orders cannot be cancelled.");
+            }
+
+            if (order.Status == SalesOrderStatus.Released)
+            {
+                foreach (var line in order.Lines)
+                {
+                    var stock = await db.StockBalances.SingleOrDefaultAsync(
+                        balance => balance.ArticleId == line.ArticleId && balance.WarehouseCode == order.WarehouseCode,
+                        cancellationToken);
+                    if (stock is null)
+                    {
+                        throw new InvalidOperationException($"No stock balance for article {line.Sku} in warehouse {order.WarehouseCode}.");
+                    }
+
+                    stock.ReleaseReservation(line.Quantity);
+                }
+            }
+
+            var cancelled = order.Cancel();
+            const string eventType = "erp.sales-order.cancelled.v1";
+            var payload = JsonSerializer.Serialize(new
+            {
+                eventId = cancelled.EventId,
+                eventType,
+                timestamp = cancelled.OccurredAt,
+                tenantId = cancelled.TenantId,
+                salesOrderId = cancelled.SalesOrderId,
+                salesOrderNumber = cancelled.SalesOrderNumber,
+                warehouseCode = cancelled.WarehouseCode,
+                lines = cancelled.Lines
+            });
+
+            db.OutboxMessages.Add(OutboxMessage.From(tenant.TenantId, eventType, payload, cancelled.EventId, cancelled.OccurredAt));
+            db.AuditEntries.Add(AuditEntry.Create(
+                tenant.TenantId,
+                tenant.UserId,
+                "SalesOrder.Cancelled",
+                nameof(SalesOrder),
+                order.Id,
+                payload,
+                httpContext.TraceIdentifier));
+            db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, Idempotency.CancelSalesOrder, order.Id));
+
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return Results.Ok(ToResponse(order));
+        }).Produces<SalesOrderResponse>();
+
         return api;
     }
 
@@ -152,6 +240,7 @@ internal static class SalesEndpoints
             order.ShipToAddressId,
             order.ShipToSnapshot,
             order.Status.ToString(),
+            order.WarehouseCode,
             order.NetAmount,
             order.Lines.Select(line => new SalesOrderLineResponse(line.ArticleId, line.Sku, line.Quantity, line.UnitPrice)).ToArray());
 }
@@ -160,7 +249,8 @@ public sealed record CreateSalesOrderRequest(
     Guid CustomerId,
     Guid ShipToAddressId,
     string OrderNumber,
-    IReadOnlyCollection<CreateSalesOrderLineRequest> Lines);
+    IReadOnlyCollection<CreateSalesOrderLineRequest> Lines,
+    string? WarehouseCode = null);
 public sealed record CreateSalesOrderLineRequest(Guid ArticleId, decimal Quantity);
 public sealed record SalesOrderResponse(
     Guid Id,
@@ -169,6 +259,7 @@ public sealed record SalesOrderResponse(
     Guid ShipToAddressId,
     AddressSnapshot ShipTo,
     string Status,
+    string WarehouseCode,
     decimal NetAmount,
     IReadOnlyCollection<SalesOrderLineResponse> Lines);
 public sealed record SalesOrderLineResponse(Guid ArticleId, string Sku, decimal Quantity, decimal UnitPrice);

@@ -36,6 +36,7 @@ export function useSalesWorkspace({
   const [articleId, setArticleId] = useState('')
   const [quantity, setQuantity] = useState(1)
   const [orderNumber, setOrderNumber] = useState(initialOrderNumber)
+  const [warehouseCode, setWarehouseCode] = useState('MAIN')
   const [lines, setLines] = useState<OrderLine[]>([])
   const [order, setOrder] = useState<SalesOrder | null>(null)
   const [step, setStep] = useState<WorkflowStep>('capture')
@@ -66,6 +67,7 @@ export function useSalesWorkspace({
         setOrder(loaded)
         setLines(loaded.lines)
         setOrderNumber(loaded.orderNumber)
+        setWarehouseCode(loaded.warehouseCode)
         setCustomerId(loaded.customerId)
         setShipToAddressId(loaded.shipToAddressId)
         setStep(loaded.status === 'Released' ? 'deliver' : 'capture')
@@ -171,9 +173,11 @@ export function useSalesWorkspace({
     }
     setBusy(true)
     try {
-      const saved = await erpApi.createOrder(selectedCustomerId, selectedShipToId, orderNumber, lines)
+      const warehouse = warehouseCode.trim().toUpperCase() || 'MAIN'
+      const saved = await erpApi.createOrder(selectedCustomerId, selectedShipToId, orderNumber, lines, warehouse)
       loadedOrderId.current = saved.id
       setOrder(saved)
+      setWarehouseCode(saved.warehouseCode)
       setStep('release')
       setNotice(`Auftrag ${saved.orderNumber} gespeichert. Als Nächstes: „Auftrag freigeben“.`)
       navigate({ workspace: 'sales', documentId: saved.id }, 'replace')
@@ -203,6 +207,23 @@ export function useSalesWorkspace({
     }
   }
 
+  async function cancelOrder() {
+    if (!order || order.status === 'Cancelled') return
+    setBusy(true)
+    try {
+      const cancelled = await erpApi.cancelOrder(order.id)
+      loadedOrderId.current = cancelled.id
+      setOrder(cancelled)
+      setWarehouseCode(cancelled.warehouseCode)
+      setStep('capture')
+      setNotice('Der Auftrag ist storniert. Eine Lieferung wird nicht erzeugt.')
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Storno fehlgeschlagen.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   function startNewOrder() {
     loadedOrderId.current = null
     setOrder(null)
@@ -210,6 +231,7 @@ export function useSalesWorkspace({
     setStep('capture')
     setCustomerId('')
     setShipToAddressId('')
+    setWarehouseCode('MAIN')
     setOrderNumber((current) => nextOrderNumber(current))
     setNotice('Neuer Auftrag. Position hinzufügen, speichern, dann freigeben.')
     navigate({ workspace: 'sales', documentId: null })
@@ -233,6 +255,8 @@ export function useSalesWorkspace({
     step,
     orderNumber,
     setOrderNumber,
+    warehouseCode,
+    setWarehouseCode,
     customers: customerChoices,
     articles,
     shippingLinks,
@@ -252,6 +276,7 @@ export function useSalesWorkspace({
     goTo,
     saveOrder,
     releaseOrder,
+    cancelOrder,
     startNewOrder,
     reloadShippingLinks,
     openRoute,

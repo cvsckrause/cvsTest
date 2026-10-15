@@ -256,8 +256,8 @@ main.lager-main {
   border-bottom: 1px solid var(--line);
 }
 
-.document-head-three {
-  grid-template-columns: minmax(140px, 0.7fr) minmax(200px, 1fr) minmax(220px, 1.2fr);
+.document-head-order {
+  grid-template-columns: minmax(140px, 0.8fr) minmax(110px, 0.5fr) minmax(180px, 1fr) minmax(200px, 1.1fr);
 }
 
 .stamm-tabs {
@@ -489,6 +489,11 @@ button:disabled {
 .status.released {
   color: #176044;
   background: #dcf2e7;
+}
+
+.status.cancelled {
+  color: #5c6570;
+  background: #e7ebef;
 }
 
 .summary dl {

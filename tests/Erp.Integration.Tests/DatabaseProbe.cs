@@ -134,6 +134,65 @@ internal sealed class DatabaseProbe(string appConnectionString, string adminConn
             return (int)(await command.ExecuteScalarAsync() ?? 0);
         });
 
+    public Task<int> CountOutboxForOrderEventAsync(Guid tenantId, Guid salesOrderId, string eventType) =>
+        WithAppAsync(tenantId, async connection =>
+        {
+            await using var command = new NpgsqlCommand(
+                """
+                select count(*)::int
+                from erp.outbox_messages
+                where "TenantId" = @tenant
+                  and "EventType" = @event_type
+                  and "Payload" like @pattern
+                """,
+                connection);
+            command.Parameters.AddWithValue("tenant", tenantId);
+            command.Parameters.AddWithValue("event_type", eventType);
+            command.Parameters.AddWithValue("pattern", "%" + salesOrderId + "%");
+            return (int)(await command.ExecuteScalarAsync() ?? 0);
+        });
+
+    public Task<Guid> OutboxIdForOrderEventAsync(Guid tenantId, Guid salesOrderId, string eventType) =>
+        WithAppAsync(tenantId, async connection =>
+        {
+            await using var command = new NpgsqlCommand(
+                """
+                select "Id"
+                from erp.outbox_messages
+                where "TenantId" = @tenant
+                  and "EventType" = @event_type
+                  and "Payload" like @pattern
+                order by "OccurredAt" desc
+                limit 1
+                """,
+                connection);
+            command.Parameters.AddWithValue("tenant", tenantId);
+            command.Parameters.AddWithValue("event_type", eventType);
+            command.Parameters.AddWithValue("pattern", "%" + salesOrderId + "%");
+            var value = await command.ExecuteScalarAsync();
+            return value is Guid id
+                ? id
+                : throw new InvalidOperationException($"No {eventType} outbox message for order {salesOrderId}.");
+        });
+
+    public Task<bool> OutboxProcessedAsync(Guid tenantId, Guid messageId) =>
+        WithAppAsync(tenantId, async connection =>
+        {
+            await using var command = new NpgsqlCommand(
+                """
+                select "ProcessedAt" is not null and "DeadLetteredAt" is null
+                from erp.outbox_messages
+                where "Id" = @id and "TenantId" = @tenant
+                """,
+                connection);
+            command.Parameters.AddWithValue("id", messageId);
+            command.Parameters.AddWithValue("tenant", tenantId);
+            var value = await command.ExecuteScalarAsync();
+            return value is bool processed
+                ? processed
+                : throw new InvalidOperationException($"No outbox message {messageId}.");
+        });
+
     public Task<int> CountDeliveriesAsync(Guid tenantId, string number) =>
         CountByNumberAsync(tenantId, "deliveries", number);
 
