@@ -43,11 +43,11 @@ Once, before the first deploy, from PowerShell in the repository root, with AWS 
 
 From `cmd.exe`, use `powershell -ExecutionPolicy Bypass -File .\infra\scripts\bootstrap-github-deploy.ps1`.
 
-The script creates the IAM user `erp-dev-github-deploy` with `AdministratorAccess` (CDK changes IAM roles), creates an access key, and stores it as the secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` of the GitHub environment `aws-dev`. It also sets you as the required reviewer of that environment. The organization's service control policy denies GitHub OIDC providers in this account, so the workflows cannot federate and use this key instead.
+The script creates the IAM user `erp-dev-github-deploy` with `AdministratorAccess` (CDK changes IAM roles), creates an access key, and stores it as the secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` of the GitHub environment `aws-dev`. It leaves that environment without required reviewers so a started workflow runs through. The organization's service control policy denies GitHub OIDC providers in this account, so the workflows cannot federate and use this key instead.
 
-The key is long-lived. Only jobs of the `aws-dev` environment can read it, and those wait for your approval. Run the script again to rotate the key: it stores a new key and then deletes the old one.
+The key is long-lived. Only jobs of the `aws-dev` environment can read it. Run the script again to rotate the key: it stores a new key and then deletes the old one.
 
-Approving that environment is the cost gate: both workflows wait there before they change the account. CDK itself is invoked with `--require-approval never` because the environment approval already happened. Do not start either workflow until this script has been run.
+Starting **AWS dev cell deploy** or **destroy** (`workflow_dispatch`) is the cost gate: once the run starts, it changes the account without a second approval. CDK is invoked with `--require-approval never`. Do not start either workflow until this script has been run.
 
 Then run **AWS dev cell deploy** (`workflow_dispatch` on `.github/workflows/aws-dev-deploy.yml`). One run on an empty cell:
 
@@ -93,7 +93,7 @@ Mandant registration (R-23) mails the approver and, after approval, the new cust
 
 ## Destroy
 
-Run **AWS dev cell destroy** (`.github/workflows/aws-dev-destroy.yml`). It uses the same `aws-dev` environment approval, then `cdk destroy Erp-dev --force`. Nothing in this cell has deletion protection. Destroy before leaving it idle overnight if you do not want the ALB/RDS idle charge.
+Run **AWS dev cell destroy** (`.github/workflows/aws-dev-destroy.yml`). It uses the same `aws-dev` environment for secrets, then `cdk destroy Erp-dev --force`. Nothing in this cell has deletion protection. Destroy before leaving it idle overnight if you do not want the ALB/RDS idle charge.
 
 The workflow then deletes leftovers from the old manual runbook when they are still present: the CodeBuild project `erp-dev-images`, the IAM role `erp-dev-codebuild`, and `s3://cdk-hnb659fds-assets-098981324459-eu-north-1/erp-src.zip`.
 

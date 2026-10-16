@@ -50,18 +50,19 @@ if (Test-DeployUser) {
 Invoke-Aws iam attach-user-policy --user-name $UserName --policy-arn "arn:aws:iam::aws:policy/AdministratorAccess" | Out-Null
 
 $utf8 = New-Object System.Text.UTF8Encoding $false
-$userId = ((Invoke-Gh api user --jq .id) | Out-String).Trim()
+# No required reviewers: starting the workflow is the gate. Re-running this script
+# clears any reviewers left from an older bootstrap so deploy/destroy stay automatic.
 $environmentBody = @{
   wait_timer = 0
   prevent_self_review = $false
   can_admins_bypass = $false
-  reviewers = @(@{ type = "User"; id = [int]$userId })
+  reviewers = @()
 } | ConvertTo-Json -Depth 6
 $environmentFile = Join-Path ([System.IO.Path]::GetTempPath()) "erp-dev-github-environment.json"
 [System.IO.File]::WriteAllText($environmentFile, $environmentBody, $utf8)
 Invoke-Gh api --method PUT -H "Accept: application/vnd.github+json" "/repos/$Repo/environments/$EnvironmentName" --input $environmentFile | Out-Null
 Remove-Item $environmentFile
-Write-Host "Environment '$EnvironmentName' requires your approval before a deploy or destroy runs."
+Write-Host "Environment '$EnvironmentName' holds deploy secrets; jobs start without a second approval."
 
 # IAM allows two keys per user. Make room, create the new key, and retire the old ones only
 # after the secrets point at the new key, so a running workflow keeps working until then.
