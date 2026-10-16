@@ -9,7 +9,7 @@ Lowest-cost disposable environment for the trading slice. It is not production-s
 | `eu-central-1` | `eu-north-1` |
 | Private Fargate, no public task IPs, NAT/VPC endpoints | Public subnets + public task IPs, no NAT Gateway |
 | Multi-AZ RDS, two API tasks, WAF, custom domain | Single-AZ `db.t4g.micro`, one API task, CloudFront default certificate in front of an HTTP ALB |
-| Cognito required for API access | Cognito is provisioned; API still uses the development tenant until PKCE is wired |
+| Cognito required for API access | The UI uses hosted-UI PKCE when the API has an authority. A pool user's `sub` must equal `tenant_memberships.user_id`, or the API returns 403 |
 
 ## Continuously billed resources
 
@@ -27,7 +27,7 @@ List prices, idle, `eu-north-1`, ~730 hours. Public IPv4 is in-scope because thi
 
 Estimated idle cost: **USD 55–70 / month**. AWS Budget: **USD 100** (alarms above the idle band; destroy when not in use). Destroy instead of leaving it running overnight.
 
-Images are built in CodeBuild (`erp-dev-images`) and pushed to ECR (`erp-dev-api`, `erp-dev-worker`, `erp-dev-migrator`). Local Docker is not required for synth or deploy. When building the API image locally, pass the short git SHA so the UI stamp (R-21) is accurate:
+Images are built by the deploy workflow and pushed to ECR (`erp-dev-api`, `erp-dev-worker`, `erp-dev-migrator`). ECS runs the immutable digest from that push, not a moving tag. Local Docker is not required for synth or deploy. When building the API image locally, pass the short git SHA so the UI stamp (R-21) is accurate:
 
 ```powershell
 docker build -f src/Erp.Api/Dockerfile --build-arg VITE_APP_GIT_SHA=$(git rev-parse --short HEAD) -t <account>.dkr.ecr.eu-north-1.amazonaws.com/erp-dev-api:latest .
@@ -35,22 +35,23 @@ docker build -f src/Erp.Api/Dockerfile --build-arg VITE_APP_GIT_SHA=$(git rev-pa
 
 ## Deploy
 
-```powershell
-cd infra
-npm ci
-npx cdk bootstrap aws://098981324459/eu-north-1
-aws codebuild start-build --project-name erp-dev-images --region eu-north-1
-npx cdk diff
-npx cdk deploy Erp-dev
-```
-
-After deploy, run the migrator once (subnet and security group IDs come from stack outputs):
+Once, before the first deploy, from a shell that already has admin credentials for account `098981324459` and a logged-in `gh`:
 
 ```powershell
-aws ecs run-task --cluster <ClusterName> --launch-type FARGATE --task-definition <MigratorTaskDefinitionArn> --network-configuration "awsvpcConfiguration={subnets=[<public-subnet>],securityGroups=[<MigratorSecurityGroupId>],assignPublicIp=ENABLED}"
+./infra/scripts/bootstrap-github-oidc.ps1
 ```
 
-The migrator uses the RDS master password only to install `erp_owner`, `erp_app`, and `erp_worker`, then applies migrations as `erp_owner`. The API connects as `erp_app` (DML only). The worker connects as `erp_worker` (DML plus `claim_outbox`). That run does not load demo data. To seed the development tenant, add:
+That creates the GitHub OIDC provider, the role `erp-dev-github-deploy`, and the GitHub environment `aws-dev` with a required reviewer. The role trusts only `repo:cvsckrause/cvsTest:environment:aws-dev`. There are no static access keys. Approving that environment is the cost gate: both workflows wait there before they change the account. CDK itself is invoked with `--require-approval never` because the environment approval already happened. Do not start either workflow until this script has been run.
+
+Then run **AWS dev cell deploy** (`workflow_dispatch` on `.github/workflows/aws-dev-deploy.yml`). One run on an empty cell:
+
+1. Creates the ECR repositories if they are missing (immutable tags on first create).
+2. Builds the API, worker, and migrator images and pushes them by digest.
+3. Bootstraps CDK if needed and deploys `Erp-dev` with those digests.
+4. Runs the migrator task and waits until it exits 0.
+5. Runs `infra/scripts/smoke-dev-cell.sh`.
+
+The migrator uses the RDS master password only to install `erp_owner`, `erp_app`, and `erp_worker`, then applies migrations as `erp_owner`. The API connects as `erp_app` (DML only). The worker connects as `erp_worker` (DML plus `claim_outbox`). That run does not load demo data. To seed the development tenant on a manual `run-task`, add:
 
 ```powershell
 --overrides "{\"containerOverrides\":[{\"name\":\"Migrator\",\"command\":[\"--seed-demo\"]}]}"
@@ -60,37 +61,29 @@ A database that still has trading tables but no `erp."__EFMigrationsHistory"` ro
 
 The UI is baked into the API image and served from CloudFront (same origin as `/api/v1`). Open `https://<DistributionDomainName>/`. CloudFront redirects HTTP to HTTPS and uses the default `*.cloudfront.net` certificate. `/api/*` is not cached. The ALB stays HTTP and accepts port 80 only from the CloudFront origin-facing prefix list, so a direct request to the ALB from the internet is refused. Local Vite (`npm run dev --prefix src/erp-web`) remains optional for UI-only development and still proxies `/api` via `ERP_API_ORIGIN`.
 
-The shell status bar shows a build stamp (`version · built-at UTC · short git SHA`) so you can tell which image is live without opening ECR or ECS.
+The shell status bar shows a build stamp (`version · dd.MM.yyyy / HH:mm:ss Europe/Berlin · short git SHA`) so you can tell which image is live without opening ECR or ECS.
 
-Smoke against `https://<DistributionDomainName>`:
+`infra/scripts/smoke-dev-cell.sh` checks `https://<DistributionDomainName>`:
 
-1. Open `https://<DistributionDomainName>/` and confirm the order-entry shell loads and the build stamp matches the rolled image. Confirm `http://<AlbDnsName>/` does not connect from the internet.
-2. `GET /health`
-3. `POST /api/v1/customers` then `POST /api/v1/articles`
-4. `POST /api/v1/sales-orders` with `Idempotency-Key`
-5. `POST /api/v1/sales-orders/{id}/release`
-6. Confirm a delivery and invoice appear after the worker poll, with the delivery number reading `LS-n` and the invoice number reading `R-n`
+1. `http://<AlbDnsName>/` does not connect from the internet.
+2. `GET /health` returns ok, and the UI bundle contains the order-entry shell plus the short git SHA from the image build.
+3. Creates a Cognito user, signs in with the access token, then `POST /api/v1/customers`, an address linked as Shipping, and `POST /api/v1/articles` (opening stock covers the release).
+4. `POST /api/v1/sales-orders` with `Idempotency-Key`.
+5. `POST /api/v1/sales-orders/{id}/release`.
+6. A delivery and invoice appear after the worker poll, with the delivery number reading `LS-n` and the invoice number reading `R-n`.
 
 ## Destroy
 
-```powershell
-cd infra
-npx cdk destroy Erp-dev --force
-```
+Run **AWS dev cell destroy** (`.github/workflows/aws-dev-destroy.yml`). It uses the same `aws-dev` environment approval, then `cdk destroy Erp-dev --force`. Nothing in this cell has deletion protection. Destroy before leaving it idle overnight if you do not want the ALB/RDS idle charge.
 
-Nothing in this cell has deletion protection. Destroy before leaving it idle overnight if you do not want the ALB/RDS idle charge.
+The workflow then deletes leftovers from the old manual runbook when they are still present: the CodeBuild project `erp-dev-images`, the IAM role `erp-dev-codebuild`, and `s3://cdk-hnb659fds-assets-098981324459-eu-north-1/erp-src.zip`.
 
-These stay behind after stack destroy and should be removed separately:
+The workflow fails if any of these is missing:
 
-```powershell
-aws ecr delete-repository --repository-name erp-dev-api --force --region eu-north-1
-aws ecr delete-repository --repository-name erp-dev-worker --force --region eu-north-1
-aws ecr delete-repository --repository-name erp-dev-migrator --force --region eu-north-1
-aws codebuild delete-project --name erp-dev-images --region eu-north-1
-aws iam delete-role-policy --role-name erp-dev-codebuild --policy-name erp-dev-codebuild
-aws iam delete-role --role-name erp-dev-codebuild
-aws budgets delete-budget --account-id 098981324459 --budget-name erp-dev-monthly
-aws s3 rm s3://cdk-hnb659fds-assets-098981324459-eu-north-1/erp-src.zip
-```
+- `CDKToolkit` (the CDK bootstrap stack; leave it unless you are tearing the account down)
+- ECR repositories `erp-dev-api`, `erp-dev-worker`, and `erp-dev-migrator`
+- The GitHub OIDC provider and `erp-dev-github-deploy`
 
-`CDKToolkit` is the CDK bootstrap stack. Leave it unless you are tearing the account down.
+The account budget `erp-dev-monthly` stays when it already exists. Destroy does not delete it. It is the account-level cost alarm, not part of the cell stack.
+
+`Erp-dev` is gone. Other stacks in the account are left alone.

@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
+import { AuthGate } from './AuthGate'
+import { bootstrapAuth, resetAuthRuntime } from './auth/runtime'
+import type { AuthAdapter, AuthSession } from './auth/types'
 
 function jsonResponse(data: unknown, ok = true, status = ok ? 200 : 400) {
   const body = JSON.stringify(data)
@@ -123,6 +126,7 @@ async function openNewOrder() {
 
 afterEach(() => {
   cleanup()
+  resetAuthRuntime()
   vi.unstubAllGlobals()
 })
 
@@ -375,6 +379,7 @@ test('keeps a released order when cancel is rejected', async () => {
 
   render(<App />)
   expect(await screen.findByText('Freigegeben')).toBeInTheDocument()
+  expect((await screen.findAllByText('Lieferung DEL-SO-1001 und Rechnung R-1 liegen vor.')).length).toBeGreaterThan(0)
   fireEvent.click(screen.getByRole('button', { name: 'Stornieren' }))
 
   expect((await screen.findAllByText('Delivered orders cannot be cancelled.')).length).toBeGreaterThan(0)
@@ -396,6 +401,121 @@ test('hides release and cancel on a cancelled order', async () => {
   expect(screen.getByRole('button', { name: 'Neuen Auftrag erfassen' })).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Auftrag freigeben' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Stornieren' })).not.toBeInTheDocument()
+})
+
+const tenantA = '11111111-1111-1111-1111-111111111111'
+const tenantB = '22222222-2222-2222-2222-222222222222'
+
+async function bootCognito(defaultTenantId: string, memberships: { tenantId: string; isDefault: boolean }[]) {
+  let tenantId: string | null = null
+  const session: AuthSession = {
+    mode: 'cognito',
+    authenticated: true,
+    accessToken: 'access-token',
+    tenantId: null,
+  }
+  const adapter: AuthAdapter = {
+    mode: 'cognito',
+    ensureSession: async () => session,
+    getAccessToken: async () => 'access-token',
+    getTenantId: () => tenantId,
+    setTenantId: (next) => {
+      tenantId = next
+    },
+    login: async () => undefined,
+    logout: async () => undefined,
+    needsLogin: () => false,
+  }
+  await bootstrapAuth(
+    async () => ({
+      mode: 'cognito',
+      authority: 'https://auth.example.test',
+      clientId: 'client',
+      hostedUiOrigin: 'https://auth.example.test',
+    }),
+    () => adapter,
+  )
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url.includes('/me/memberships')) {
+      return jsonResponse({ memberships, defaultTenantId })
+    }
+    return route(url)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
+test('keeps the local status line when no Mandant session is present', async () => {
+  render(<App />)
+  expect(await screen.findByText('Mandant 100 · Hauptlager MAIN')).toBeInTheDocument()
+  expect(screen.queryByRole('combobox', { name: 'Mandant wechseln' })).not.toBeInTheDocument()
+})
+
+test('shows one Mandant id and no switcher', async () => {
+  await bootCognito(tenantA, [{ tenantId: tenantA, isDefault: true }])
+  render(<AuthGate><App /></AuthGate>)
+
+  expect(await screen.findByText(tenantA)).toBeInTheDocument()
+  expect(screen.queryByRole('combobox', { name: 'Mandant wechseln' })).not.toBeInTheDocument()
+  expect(screen.queryByText('Mandant 100 · Hauptlager MAIN')).not.toBeInTheDocument()
+})
+
+test('switches Mandant, drops the open document, and reloads customers', async () => {
+  window.history.replaceState(null, '', '/sales/order-1')
+  const fetchMock = await bootCognito(tenantA, [
+    { tenantId: tenantA, isDefault: true },
+    { tenantId: tenantB, isDefault: false },
+  ])
+
+  render(<AuthGate><App /></AuthGate>)
+
+  expect(await screen.findByRole('heading', { name: 'SO-1001' })).toBeInTheDocument()
+  const select = screen.getByRole('combobox', { name: 'Mandant wechseln' })
+  expect(select).toHaveValue(tenantA)
+  const firstCustomers = fetchMock.mock.calls.find(([requestUrl]) => String(requestUrl).includes('/customers') && !String(requestUrl).includes('/addresses'))
+  expect(new Headers(firstCustomers?.[1]?.headers).get('X-Tenant-Id')).toBe(tenantA)
+
+  fireEvent.change(select, { target: { value: tenantB } })
+
+  await waitFor(() => {
+    const switched = fetchMock.mock.calls.some(([requestUrl, requestInit]) =>
+      String(requestUrl).includes('/customers')
+      && !String(requestUrl).includes('/addresses')
+      && new Headers(requestInit?.headers).get('X-Tenant-Id') === tenantB)
+    expect(switched).toBe(true)
+  })
+  expect(window.location.href).toBe(`${window.location.origin}/sales`)
+})
+
+test('does not reopen the previous Mandant Stamm document after a switch', async () => {
+  const fetchMock = await bootCognito(tenantA, [
+    { tenantId: tenantA, isDefault: true },
+    { tenantId: tenantB, isDefault: false },
+  ])
+
+  render(<AuthGate><App /></AuthGate>)
+  await screen.findByRole('heading', { name: 'Auftragsliste' })
+  fireEvent.click(screen.getByTitle('Stammdaten'))
+  await screen.findByRole('heading', { name: 'Artikel anlegen' })
+  fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten' }))
+  expect(await screen.findByRole('heading', { name: 'Artikel bearbeiten' })).toBeInTheDocument()
+  expect(window.location.pathname).toBe('/stamm/articles/article-1')
+
+  fireEvent.click(screen.getByTitle('Vertrieb'))
+  expect(await screen.findByRole('heading', { name: 'Auftragsliste' })).toBeInTheDocument()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Mandant wechseln' }), { target: { value: tenantB } })
+  await waitFor(() => {
+    expect(window.location.pathname).toBe('/sales')
+  })
+
+  fireEvent.click(screen.getByTitle('Stammdaten'))
+  expect(await screen.findByRole('heading', { name: 'Artikel & Adressen' })).toBeInTheDocument()
+  expect(window.location.pathname).toBe('/stamm/articles')
+  const articleReads = fetchMock.mock.calls.filter(([requestUrl, requestInit]) =>
+    String(requestUrl).includes('/articles/article-1')
+    && new Headers(requestInit?.headers).get('X-Tenant-Id') === tenantB)
+  expect(articleReads).toHaveLength(0)
 })
 
 test('puts the open article into the URL', async () => {

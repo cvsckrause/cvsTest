@@ -61,5 +61,9 @@ export function useRoute() {
     remember(parseRoute(path))
   }
 
-  return { route, navigate, lastStamm }
+  function clearStammDocument() {
+    setLastStamm((current) => current.documentId === null ? current : { ...current, documentId: null })
+  }
+
+  return { route, navigate, lastStamm, clearStammDocument }
 }

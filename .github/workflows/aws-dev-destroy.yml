@@ -1,0 +1,53 @@
+name: AWS dev cell destroy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: aws-dev-cell
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-north-1
+  AWS_ACCOUNT_ID: "098981324459"
+  STACK_NAME: Erp-dev
+
+jobs:
+  destroy:
+    name: Destroy the dev cell
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: aws-dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::098981324459:role/erp-dev-github-deploy
+          aws-region: eu-north-1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+
+      - name: Install CDK dependencies
+        working-directory: infra
+        run: npm ci
+
+      - name: Destroy
+        working-directory: infra
+        run: npx cdk destroy "${STACK_NAME}" --force
+
+      - name: Remove manual-runbook leftovers
+        run: bash infra/scripts/remove-manual-leftovers.sh
+
+      - name: Confirm retained resources
+        run: bash infra/scripts/assert-destroyed.sh

@@ -3,7 +3,7 @@ import { formatBuildStamp, getBuildInfo } from './buildInfo'
 
 test('formats a production build stamp', () => {
   expect(formatBuildStamp('0.1.0', '2026-10-15T13:42:00.000Z', 'a1b2c3d')).toBe(
-    'v0.1.0 · 2026-10-15 13:42 UTC · a1b2c3d',
+    'v0.1.0 · 15.10.2026 / 15:42:00 · a1b2c3d',
   )
 })
 
@@ -21,5 +21,5 @@ test('uses injected env values when present', () => {
     VITE_APP_VERSION: '0.1.0',
     VITE_APP_BUILD_TIME: '2026-10-15T13:42:00Z',
     VITE_APP_GIT_SHA: 'be27a82',
-  }).label).toBe('v0.1.0 · 2026-10-15 13:42 UTC · be27a82')
+  }).label).toBe('v0.1.0 · 15.10.2026 / 15:42:00 · be27a82')
 })

@@ -419,6 +419,44 @@
         ],
         "type": "object"
       },
+      "MembershipListResponse": {
+        "properties": {
+          "defaultTenantId": {
+            "format": "uuid",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "memberships": {
+            "items": {
+              "$ref": "#/components/schemas/MembershipResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "memberships",
+          "defaultTenantId"
+        ],
+        "type": "object"
+      },
+      "MembershipResponse": {
+        "properties": {
+          "isDefault": {
+            "type": "boolean"
+          },
+          "tenantId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenantId",
+          "isDefault"
+        ],
+        "type": "object"
+      },
       "SalesOrderLineResponse": {
         "properties": {
           "articleId": {
@@ -1246,6 +1284,25 @@
           },
           "404": {
             "description": "Not Found"
+          }
+        },
+        "tags": [
+          "Erp.Api"
+        ]
+      }
+    },
+    "/api/v1/me/memberships": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipListResponse"
+                }
+              }
+            },
+            "description": "OK"
           }
         },
         "tags": [
