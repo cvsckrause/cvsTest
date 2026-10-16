@@ -7,6 +7,7 @@ public sealed class WorkerOptions
     public int BatchSize { get; set; } = 20;
     public int MaxAttempts { get; set; } = 5;
     public int BaseDelaySeconds { get; set; } = 5;
+    public int IdempotencyRetentionDays { get; set; } = 30;
 }
 
 public sealed record WorkerDatabase(string ConnectionString);

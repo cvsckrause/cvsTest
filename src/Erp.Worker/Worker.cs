@@ -141,6 +141,8 @@ public sealed class Worker(
             }
         }
 
+        await PurgeIdempotencyAsync(settings.IdempotencyRetentionDays, cancellationToken);
+
         try
         {
             OutboxTelemetry.Publish(await OutboxMetrics.ReadAsync(database.ConnectionString, cancellationToken));
@@ -148,6 +150,27 @@ public sealed class Worker(
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogError(exception, "Outbox metrics failed.");
+        }
+    }
+
+    private async Task PurgeIdempotencyAsync(int retentionDays, CancellationToken cancellationToken)
+    {
+        if (retentionDays <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await using var connection = new NpgsqlConnection(database.ConnectionString);
+            await connection.OpenAsync(cancellationToken);
+            await using var command = new NpgsqlCommand("select erp.purge_idempotency(@retention_days)", connection);
+            command.Parameters.AddWithValue("retention_days", retentionDays);
+            await command.ExecuteScalarAsync(cancellationToken);
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogError(exception, "Idempotency purge failed.");
         }
     }
 
