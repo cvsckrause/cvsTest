@@ -46,10 +46,11 @@ That creates the GitHub OIDC provider, the role `erp-dev-github-deploy`, and the
 Then run **AWS dev cell deploy** (`workflow_dispatch` on `.github/workflows/aws-dev-deploy.yml`). One run on an empty cell:
 
 1. Creates the ECR repositories if they are missing (immutable tags on first create).
-2. Builds the API, worker, and migrator images and pushes them by digest.
-3. Bootstraps CDK if needed and deploys `Erp-dev` with those digests.
-4. Runs the migrator task and waits until it exits 0.
-5. Runs `infra/scripts/smoke-dev-cell.sh`.
+2. Creates the SES email identity `ckrause@cvs.de` if it is missing (see [Registration mail](#registration-mail)).
+3. Builds the API, worker, and migrator images and pushes them by digest.
+4. Bootstraps CDK if needed and deploys `Erp-dev` with those digests.
+5. Runs the migrator task and waits until it exits 0.
+6. Runs `infra/scripts/smoke-dev-cell.sh`.
 
 The migrator uses the RDS master password only to install `erp_owner`, `erp_app`, and `erp_worker`, then applies migrations as `erp_owner`. The API connects as `erp_app` (DML only). The worker connects as `erp_worker` (DML plus `claim_outbox`). That run does not load demo data. To seed the development tenant on a manual `run-task`, add:
 
@@ -67,10 +68,22 @@ The shell status bar shows a build stamp (`version · dd.MM.yyyy / HH:mm:ss Euro
 
 1. `http://<AlbDnsName>/` does not connect from the internet.
 2. `GET /health` returns ok, and the UI bundle contains the order-entry shell plus the short git SHA from the image build.
-3. Creates a Cognito user, signs in with the access token, then `POST /api/v1/customers`, an address linked as Shipping, and `POST /api/v1/articles` (opening stock covers the release).
-4. `POST /api/v1/sales-orders` with `Idempotency-Key`.
-5. `POST /api/v1/sales-orders/{id}/release`.
-6. A delivery and invoice appear after the worker poll, with the delivery number reading `LS-n` and the invoice number reading `R-n`.
+3. Creates a Cognito user and signs in. `GET /api/v1/session` must resolve that user to the bootstrap tenant.
+4. Anonymous `POST /api/v1/registrations/approve` with an unknown token returns 404. That proves the public route passes CloudFront without sending mail.
+5. `POST /api/v1/customers`, an address linked as Shipping, and `POST /api/v1/articles` (opening stock covers the release).
+6. `POST /api/v1/sales-orders` with `Idempotency-Key`.
+7. `POST /api/v1/sales-orders/{id}/release`.
+8. A delivery and invoice appear after the worker poll, with the delivery number reading `LS-n` and the invoice number reading `R-n`.
+
+## Registration mail
+
+Mandant registration (R-23) mails the approver and, after approval, the new customer. The API sends through SES v2 from `ckrause@cvs.de`, which is also the approver address (`registrationMailbox` in `infra/lib/erp-dev-stack.ts`).
+
+- The identity is created by `infra/scripts/ensure-ses-identity.sh`, not by the stack, so destroy leaves it in place and a redeploy needs no new verification. After the first create, AWS mails a verification link to `ckrause@cvs.de`. Until someone clicks it, the deploy prints a warning and registration returns 503.
+- The account is in the SES sandbox: mail goes only to verified identities, at most 200 per day. A customer address that is not verified fails the approval with 503 and leaves the Mandant pending, so the link can be used again. Verify a test recipient with `aws sesv2 create-email-identity --email-identity <address>`. Production access is tracked as R-24 ([#87](https://github.com/cvsckrause/cvsTest/issues/87)).
+- The API task role may call `AdminCreateUser`, `AdminSetUserPassword`, and `AdminGetUser` on the pool and `ses:SendEmail` with `ses:FromAddress` pinned to the mailbox.
+- The registration rate limit counts per viewer IP. The API reads `X-Forwarded-For` with `ForwardedHeaders__ForwardLimit=2`, one hop for CloudFront and one for the ALB.
+- To delete the identity when tearing the account down: `aws sesv2 delete-email-identity --email-identity ckrause@cvs.de`.
 
 ## Destroy
 
@@ -83,6 +96,8 @@ The workflow fails if any of these is missing:
 - `CDKToolkit` (the CDK bootstrap stack; leave it unless you are tearing the account down)
 - ECR repositories `erp-dev-api`, `erp-dev-worker`, and `erp-dev-migrator`
 - The GitHub OIDC provider and `erp-dev-github-deploy`
+
+It also warns, without failing, when the SES identity `ckrause@cvs.de` is gone.
 
 The account budget `erp-dev-monthly` stays when it already exists. Destroy does not delete it. It is the account-level cost alarm, not part of the cell stack.
 

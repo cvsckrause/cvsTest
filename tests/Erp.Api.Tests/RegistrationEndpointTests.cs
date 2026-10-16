@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Erp.Api.Registration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Erp.Api.Tests;
 
@@ -42,6 +43,57 @@ public sealed class RegistrationEndpointTests
         }
 
         Assert.Equal([HttpStatusCode.NotFound, HttpStatusCode.NotFound, HttpStatusCode.TooManyRequests], statuses);
+    }
+
+    [Fact]
+    public async Task Behind_two_proxies_the_rate_limit_uses_the_viewer_address()
+    {
+        await using var fixture = ApiFixture.Start(
+            environment: "Production",
+            authenticationEnabled: true,
+            developmentIdentityEnabled: false,
+            registrationPermits: 1,
+            forwardLimit: 2);
+
+        async Task<HttpStatusCode> Approve(string forwardedFor)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/registrations/approve")
+            {
+                Content = JsonContent.Create(new { token = "" }),
+            };
+            request.Headers.Add("X-Forwarded-For", forwardedFor);
+            using var response = await fixture.Client.SendAsync(request);
+            return response.StatusCode;
+        }
+
+        Assert.Equal(HttpStatusCode.NotFound, await Approve("203.0.113.9, 198.51.100.1"));
+        Assert.Equal(HttpStatusCode.NotFound, await Approve("203.0.113.10, 198.51.100.1"));
+        Assert.Equal(HttpStatusCode.TooManyRequests, await Approve("192.0.2.77, 203.0.113.9, 198.51.100.1"));
+    }
+
+    [Fact]
+    public async Task Configured_aws_settings_select_ses_and_cognito_administration()
+    {
+        await using var fixture = ApiFixture.Start(
+            environment: "Production",
+            authenticationEnabled: true,
+            developmentIdentityEnabled: false,
+            awsRegistration: true);
+
+        Assert.IsType<SesMailSender>(fixture.Services.GetRequiredService<IMailSender>());
+        Assert.IsType<AwsCognitoUserAdmin>(fixture.Services.GetRequiredService<ICognitoUserAdmin>());
+    }
+
+    [Fact]
+    public async Task Without_aws_settings_production_registration_is_unavailable()
+    {
+        await using var fixture = ApiFixture.Start(
+            environment: "Production",
+            authenticationEnabled: true,
+            developmentIdentityEnabled: false);
+
+        Assert.IsType<UnconfiguredMailSender>(fixture.Services.GetRequiredService<IMailSender>());
+        Assert.IsType<UnconfiguredCognitoUserAdmin>(fixture.Services.GetRequiredService<ICognitoUserAdmin>());
     }
 
     [Fact]

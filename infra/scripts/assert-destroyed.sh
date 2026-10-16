@@ -16,6 +16,10 @@ for repo in erp-dev-api erp-dev-worker erp-dev-migrator; do
   aws ecr describe-repositories --region "${AWS_REGION}" --repository-names "${repo}" >/dev/null
 done
 
+if ! aws sesv2 get-email-identity --region "${AWS_REGION}" --email-identity "${REGISTRATION_MAILBOX:-ckrause@cvs.de}" >/dev/null 2>&1; then
+  echo "SES identity ${REGISTRATION_MAILBOX:-ckrause@cvs.de} is missing. The next deploy recreates it and needs another verification click." >&2
+fi
+
 aws iam get-role --role-name "${DEPLOY_ROLE_NAME}" >/dev/null
 aws iam get-open-id-connect-provider \
   --open-id-connect-provider-arn "arn:aws:iam::${AWS_ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com" \
