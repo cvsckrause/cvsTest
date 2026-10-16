@@ -67,6 +67,7 @@ flowchart LR
     R04[R-04 RLS gap + guard test]:::a
     R05[R-05 Postgres integration tests]:::a
     R06[R-06 API error contract]:::b
+    R22[R-22 Invoice R- prefix]:::b
   end
   subgraph W1[Wave 1 — correct slice + auth]
     R07[R-07 JWT + tenant membership]:::a
@@ -101,6 +102,7 @@ flowchart LR
   R02 --> R13
   R05 --> R14
   R14 --> R16
+  R14 --> R22
   R13 --> R16
   R11 --> R17
   R11 --> R18
@@ -126,6 +128,7 @@ flowchart LR
 | 9 | R-18 Observability + alarms | R-16 Invoice DACH minimum |
 | 10 | R-19 Scripted deploy | R-20 Idempotency fingerprint |
 | 11 | | R-21 UI build stamp *(can ship early; soft depends on R-10 shell)* |
+| 12 | | R-22 Prefix invoice numbers with `R-` *(Wave 0; after R-14)* |
 
 Sync points: R-02 merges before any other `Program.cs` change. R-11 merges before R-12. R-07, R-08, and R-09 ship together to the AWS cell, with a cost-gate update for R-09.
 
@@ -236,6 +239,25 @@ Sync points: R-02 merges before any other `Program.cs` change. R-11 merges befor
 
 **Acceptance.**
 - Tests for duplicate SKU (409), second release (409), concurrent same-key create (one 201, one replay), and concurrent receipts on the same balance (no lost update).
+
+### R-22 — Number invoices with an R- prefix
+
+`lane:B` `priority:P1` `size:S` `area:domain,worker` `type:feature` — depends on: R-14
+
+**Context.** R-14 allocates a gapless invoice sequence with an empty prefix, so the stored number is `1`, `2`, `3`. A Rechnung in this product should read `R-1`, `R-2`, `R-3`.
+
+**Scope.**
+- The invoice number-range default prefix is `R-`.
+- A range that already exists with an empty invoice prefix is updated so the next allocation uses `R-` and continues the same sequence. Numbers already stored on invoices stay as they were issued.
+- Delivery numbers stay `LS-n`. Order numbers stay `AU-n`, or a manual override.
+- The invoice step in the UI shows the prefixed number.
+
+**Acceptance.**
+- A fresh tenant's invoices are `R-1`, `R-2`, … with no gaps or duplicates.
+- Fifty parallel releases produce `R-1`..`R-50`.
+- An existing empty-prefix range continues at `R-{next}` without a duplicate or a gap.
+
+**Out of scope.** Yearly reset, zero-padding, and changing the delivery or order prefixes.
 
 ---
 
