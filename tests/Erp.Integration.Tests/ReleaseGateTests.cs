@@ -89,7 +89,26 @@ public sealed class ReleaseGateTests(PostgresFixture fixture)
         Assert.Equal(1, await fixture.Probe.CountDeliveriesForOrderAsync(fixture.TenantA, orderA));
     }
 
-    private static async Task<(Guid OrderId, Guid ArticleId)> DraftOrderAsync(ApiSession api, string label)
+    [Fact]
+    public async Task Release_short_of_stock_returns_the_same_conflict_shape_with_no_missing_seller_fields()
+    {
+        using var api = fixture.OpenSession(fixture.TenantA);
+        var (orderId, articleId) = await DraftOrderAsync(api, "SS", quantity: 4m);
+
+        var refused = await api.PostAsync($"/api/v1/sales-orders/{orderId}/release", new { }, $"ss-{Guid.NewGuid():N}");
+
+        Assert.Equal(HttpStatusCode.Conflict, refused.Status);
+        using (var body = JsonDocument.Parse(refused.Body))
+        {
+            Assert.StartsWith("Insufficient stock", body.RootElement.GetProperty("error").GetString());
+            Assert.Equal(0, body.RootElement.GetProperty("missingSellerFields").GetArrayLength());
+        }
+
+        Assert.Equal(0m, await ReservedAsync(api, articleId));
+        Assert.Equal("Draft", StatusOf((await api.GetAsync($"/api/v1/sales-orders/{orderId}")).Body));
+    }
+
+    private static async Task<(Guid OrderId, Guid ArticleId)> DraftOrderAsync(ApiSession api, string label, decimal quantity = 1m)
     {
         var suffix = $"{label}-{Guid.NewGuid():N}"[..12].ToUpperInvariant();
         var customer = await api.PostOkAsync("/api/v1/customers", new { number = suffix, name = $"{label} Kunde" });
@@ -105,7 +124,7 @@ public sealed class ReleaseGateTests(PostgresFixture fixture)
         var article = await api.PostOkAsync("/api/v1/articles", new { sku = suffix, name = $"{label} Artikel", salesPrice = 5m, openingStock = 3m });
         var order = await api.PostOkAsync(
             "/api/v1/sales-orders",
-            new { customerId = customer.Id, shipToAddressId = address.Id, lines = new[] { new { articleId = article.Id, quantity = 1m } } },
+            new { customerId = customer.Id, shipToAddressId = address.Id, lines = new[] { new { articleId = article.Id, quantity } } },
             $"{suffix}-order");
         return (order.Id, article.Id);
     }

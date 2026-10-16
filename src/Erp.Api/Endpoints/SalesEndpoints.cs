@@ -266,7 +266,7 @@ internal static class SalesEndpoints
             var missingSellerFields = mandant?.MissingSellerFields() ?? Mandant.SellerFields;
             if (mandant is null || missingSellerFields.Count > 0)
             {
-                return Results.Conflict(new SellerDetailsIncompleteResponse(
+                return Results.Conflict(new ReleaseConflictResponse(
                     "Seller details are incomplete. Complete them under Stammdaten > Firma before releasing orders.",
                     missingSellerFields));
             }
@@ -280,7 +280,7 @@ internal static class SalesEndpoints
                     cancellationToken);
                 if (stock is null || stock.Available < line.Quantity)
                 {
-                    return Results.Conflict(new { error = $"Insufficient stock for article {line.Sku}." });
+                    return Results.Conflict(new ReleaseConflictResponse($"Insufficient stock for article {line.Sku}.", []));
                 }
                 stock.Reserve(line.Quantity);
             }
@@ -322,7 +322,7 @@ internal static class SalesEndpoints
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return Results.Ok(ToResponse(order));
-        }).Produces<SalesOrderResponse>().Produces<SellerDetailsIncompleteResponse>(StatusCodes.Status409Conflict);
+        }).Produces<SalesOrderResponse>().Produces<ReleaseConflictResponse>(StatusCodes.Status409Conflict);
 
         api.MapPost("/sales-orders/{id:guid}/cancel", async (
             Guid id,
@@ -501,7 +501,8 @@ public sealed record SalesOrderLineResponse(
     decimal Quantity,
     decimal UnitPrice,
     decimal NetAmount);
-public sealed record SellerDetailsIncompleteResponse(string Error, IReadOnlyList<string> MissingSellerFields);
+// MissingSellerFields is empty unless the release was refused for incomplete seller details.
+public sealed record ReleaseConflictResponse(string Error, IReadOnlyList<string> MissingSellerFields);
 public sealed record DeliveryResponse(
     Guid Id,
     Guid SalesOrderId,

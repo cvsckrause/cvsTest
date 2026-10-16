@@ -575,6 +575,24 @@
         ],
         "type": "object"
       },
+      "ReleaseConflictResponse": {
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "missingSellerFields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "error",
+          "missingSellerFields"
+        ],
+        "type": "object"
+      },
       "SalesOrderLineResponse": {
         "properties": {
           "articleId": {
@@ -720,24 +738,6 @@
           "status",
           "netAmount",
           "createdAt"
-        ],
-        "type": "object"
-      },
-      "SellerDetailsIncompleteResponse": {
-        "properties": {
-          "error": {
-            "type": "string"
-          },
-          "missingSellerFields": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "error",
-          "missingSellerFields"
         ],
         "type": "object"
       },
@@ -1988,7 +1988,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SellerDetailsIncompleteResponse"
+                  "$ref": "#/components/schemas/ReleaseConflictResponse"
                 }
               }
             },

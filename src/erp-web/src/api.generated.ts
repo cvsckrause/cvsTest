@@ -907,7 +907,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["SellerDetailsIncompleteResponse"];
+                        "application/json": components["schemas"]["ReleaseConflictResponse"];
                     };
                 };
             };
@@ -1285,6 +1285,10 @@ export interface components {
             email: string;
             firmenname: string;
         };
+        ReleaseConflictResponse: {
+            error: string;
+            missingSellerFields: string[];
+        };
         SalesOrderLineResponse: {
             /** Format: uuid */
             articleId: string;
@@ -1325,10 +1329,6 @@ export interface components {
             netAmount: number | string;
             orderNumber: string;
             status: string;
-        };
-        SellerDetailsIncompleteResponse: {
-            error: string;
-            missingSellerFields: string[];
         };
         SellerDetailsResponse: {
             additionalLine: null | string;

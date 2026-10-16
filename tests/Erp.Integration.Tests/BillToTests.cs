@@ -22,7 +22,7 @@ public sealed class BillToTests(PostgresFixture fixture)
 
         var chosen = await CreateOrderAsync(api, customer.Id, shipTo, article, b2);
         Assert.Equal(HttpStatusCode.Created, chosen.Status);
-        await api.PutAsync($"/api/v1/addresses/{b2}", new
+        var moved = await api.PutAsync($"/api/v1/addresses/{b2}", new
         {
             name = "Buchhaltung Süd",
             street = "Umgezogen 99",
@@ -30,6 +30,7 @@ public sealed class BillToTests(PostgresFixture fixture)
             city = "München",
             countryCode = "DE"
         });
+        Assert.Equal(HttpStatusCode.OK, moved.Status);
 
         var read = await api.GetAsync($"/api/v1/sales-orders/{chosen.Id}");
         var billTo = BillToOf(read.Body);
@@ -82,6 +83,24 @@ public sealed class BillToTests(PostgresFixture fixture)
 
         Assert.Equal(HttpStatusCode.BadRequest, created.Status);
         Assert.Contains("Billing", created.Body);
+    }
+
+    [Fact]
+    public async Task Another_tenants_billing_address_is_rejected_without_revealing_it()
+    {
+        using var apiA = fixture.OpenSession(fixture.TenantA);
+        using var apiB = fixture.OpenSession(fixture.TenantB);
+        var customerA = await CustomerAsync(apiA, "Fremdmandant GmbH");
+        var billingA = await LinkAsync(apiA, customerA, "Geheime Buchhaltung", "Billing");
+        var customerB = await CustomerAsync(apiB, "Eigener Kunde GmbH");
+        var shipToB = await LinkAsync(apiB, customerB, "Lager B", "Shipping");
+        var articleB = await ArticleAsync(apiB);
+
+        var created = await CreateOrderAsync(apiB, customerB.Id, shipToB, articleB, billingA);
+
+        Assert.Equal(HttpStatusCode.BadRequest, created.Status);
+        Assert.Contains("Billing", created.Body);
+        Assert.DoesNotContain("Geheime Buchhaltung", created.Body);
     }
 
     private static async Task<(Guid Id, string Number)> CustomerAsync(ApiSession api, string name)
