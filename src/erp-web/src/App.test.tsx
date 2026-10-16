@@ -73,6 +73,7 @@ const salesOrder = {
   customerId: 'customer-1',
   shipToAddressId: 'address-1',
   shipTo: address,
+  billTo: { buyerName: 'Nordrad GmbH', buyerNumber: '10000', addressId: 'address-1', address },
   status: 'Released',
   warehouseCode: 'MAIN',
   netAmount: 799,
@@ -483,6 +484,7 @@ test('sends NEBEN when the warehouse field is neben', async () => {
   await screen.findByRole('option', { name: '10000 · Nordrad GmbH' })
   await screen.findByRole('option', { name: 'Nordrad GmbH · 20095 Hamburg' })
   fireEvent.change(screen.getByLabelText('Lager'), { target: { value: 'neben' } })
+  expect(screen.queryByLabelText('Rechnungsadresse')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Position hinzufügen' }))
   fireEvent.click(screen.getByRole('button', { name: 'Auftrag speichern' }))
 
@@ -490,9 +492,102 @@ test('sends NEBEN when the warehouse field is neben', async () => {
   const createCall = fetchMock.mock.calls.find(([requestUrl, requestInit]) =>
     String(requestUrl).endsWith('/sales-orders') && requestInit?.method === 'POST')
   expect(createCall).toBeTruthy()
-  const body = JSON.parse(String(createCall?.[1]?.body)) as { warehouseCode: string; orderNumber: string | null }
+  const body = JSON.parse(String(createCall?.[1]?.body)) as {
+    warehouseCode: string
+    orderNumber: string | null
+    billToAddressId: string | null
+  }
   expect(body.warehouseCode).toBe('NEBEN')
   expect(body.orderNumber).toBeNull()
+  expect(body.billToAddressId).toBeNull()
+})
+
+test('asks for a bill-to address when the customer has several and sends the choice', async () => {
+  const branch = { ...address, id: 'address-2', name: 'Nordrad Buchhaltung', street: 'Kontorweg 3', postalCode: '20457' }
+  const billingLinks = [
+    { ...shippingLink, id: 'link-b1', role: 'Billing' },
+    { id: 'link-b2', customerId: 'customer-1', addressId: 'address-2', role: 'Billing', address: branch },
+  ]
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url.includes('/addresses?role=Billing')) return jsonResponse(billingLinks)
+    if (url.endsWith('/sales-orders') && init?.method === 'POST') {
+      return jsonResponse({
+        ...salesOrder,
+        status: 'Draft',
+        billTo: { buyerName: 'Nordrad GmbH', buyerNumber: '10000', addressId: 'address-2', address: branch },
+      }, true, 201)
+    }
+    return route(url)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  render(<App />)
+  await openNewOrder()
+  await screen.findByRole('option', { name: '10000 · Nordrad GmbH' })
+  const billTo = await screen.findByLabelText('Rechnungsadresse')
+  expect(billTo).toHaveValue('')
+  fireEvent.click(screen.getByRole('button', { name: 'Position hinzufügen' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Auftrag speichern' }))
+
+  expect(await screen.findByText('Bitte eine Rechnungsadresse wählen.')).toBeInTheDocument()
+  expect(billTo).toHaveAttribute('aria-invalid', 'true')
+  const posts = () => fetchMock.mock.calls.filter(([requestUrl, requestInit]) =>
+    String(requestUrl).endsWith('/sales-orders') && requestInit?.method === 'POST')
+  expect(posts()).toHaveLength(0)
+
+  fireEvent.change(billTo, { target: { value: 'address-2' } })
+  expect(screen.queryByText('Bitte eine Rechnungsadresse wählen.')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Auftrag speichern' }))
+
+  await screen.findByRole('button', { name: 'Auftrag freigeben' })
+  expect(posts()).toHaveLength(1)
+  expect(JSON.parse(String(posts()[0][1]?.body))).toMatchObject({ billToAddressId: 'address-2' })
+  expect(screen.getByText('Nordrad GmbH · Kontorweg 3, 20457 Hamburg')).toBeInTheDocument()
+})
+
+test('points to the Firma tab when a release is refused for missing seller details', async () => {
+  window.history.replaceState(null, '', '/sales/order-1')
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url.includes('/release') && init?.method === 'POST') {
+      return jsonResponse({
+        error: 'Seller details are incomplete. Complete them under Stammdaten > Firma before releasing orders.',
+        missingSellerFields: ['street', 'steuernummerOrUstIdNr'],
+      }, false, 409)
+    }
+    if (url.endsWith('/mandant/seller')) {
+      return jsonResponse({
+        mandantNumber: 100,
+        firmenname: 'Northstar Demo GmbH',
+        street: null,
+        postalCode: null,
+        city: null,
+        countryCode: 'DE',
+        additionalLine: null,
+        steuernummer: null,
+        ustIdNr: null,
+        missingFields: ['street', 'postalCode', 'city', 'steuernummerOrUstIdNr'],
+      })
+    }
+    if (url.includes('/sales-orders/') && !url.includes('/deliveries') && !url.includes('/invoices')) {
+      return jsonResponse({ ...salesOrder, status: 'Draft' })
+    }
+    return route(url)
+  }))
+
+  render(<App />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Auftrag freigeben' }))
+
+  const warning = await screen.findByRole('alert')
+  expect(warning).toHaveTextContent('Ohne vollständige Firmendaten kann keine Rechnung erstellt werden.')
+  expect(screen.getAllByText('Firmendaten unvollständig. Unter Stammdaten › Firma ergänzen, dann erneut freigeben.').length)
+    .toBeGreaterThan(0)
+  expect(screen.getByText('Gespeichert')).toBeInTheDocument()
+
+  fireEvent.click(within(warning).getByRole('button', { name: 'Firmendaten ergänzen' }))
+  expect(await screen.findByRole('heading', { name: 'Firmendaten für Rechnungen' })).toBeInTheDocument()
+  expect(window.location.pathname).toBe('/stamm/firma')
 })
 
 test('cancels a released order and offers a new one', async () => {

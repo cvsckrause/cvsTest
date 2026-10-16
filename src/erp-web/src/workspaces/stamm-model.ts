@@ -24,7 +24,7 @@ type StammModelArgs = {
   setBusy: (busy: boolean) => void
   navigate: (route: AppRoute, mode?: 'push' | 'replace') => void
   salesCustomerId: string
-  reloadShippingLinks: (customerId: string, selectFirstIfEmpty: boolean) => Promise<void>
+  reloadAddressLinks: (customerId: string, selectFirstIfEmpty: boolean) => Promise<void>
   openSales: () => void
 }
 
@@ -43,7 +43,7 @@ export function useStammWorkspace({
   setBusy,
   navigate,
   salesCustomerId,
-  reloadShippingLinks,
+  reloadAddressLinks,
   openSales,
 }: StammModelArgs) {
   const [articleForm, setArticleForm] = useState(emptyArticle)
@@ -245,7 +245,7 @@ export function useStammWorkspace({
       setAddressForm(emptyAddress)
       navigate({ workspace: 'stamm', tab: 'addresses', documentId: null }, 'replace')
       await refreshAddresses()
-      await reloadShippingLinks(salesCustomerId, false)
+      await reloadAddressLinks(salesCustomerId, false)
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Adresse konnte nicht gespeichert werden.')
     } finally {
@@ -260,7 +260,7 @@ export function useStammWorkspace({
     try {
       await erpApi.linkCustomerAddress(selectedLinkCustomerId, selectedLinkAddressId, linkRole)
       setNotice(`Adresse als ${linkRole} verknüpft.`)
-      await reloadShippingLinks(selectedLinkCustomerId, true)
+      await reloadAddressLinks(selectedLinkCustomerId, true)
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Verknüpfung fehlgeschlagen.')
     } finally {

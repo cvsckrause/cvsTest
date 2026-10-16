@@ -337,6 +337,45 @@ main.lager-main {
   grid-template-columns: minmax(140px, 0.8fr) minmax(110px, 0.5fr) minmax(180px, 1fr) minmax(200px, 1.1fr);
 }
 
+.bill-to-field {
+  grid-column: 3 / -1;
+  display: grid;
+  gap: 6px;
+}
+
+.field-label {
+  color: #526372;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.bill-to-readonly {
+  margin: 0;
+  color: var(--navy);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.field-warning {
+  color: #9a3b2e;
+  font-weight: 600;
+}
+
+.seller-warning {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  color: #7a3a1d;
+  background: #fdf2ec;
+  border-left: 3px solid #c8642f;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.seller-warning p {
+  margin: 0;
+}
+
 .stamm-tabs {
   grid-template-columns: repeat(3, 1fr);
 }
@@ -797,6 +836,10 @@ kbd {
   .document-head,
   .add-line {
     grid-template-columns: 1fr;
+  }
+
+  .bill-to-field {
+    grid-column: auto;
   }
 
   .line-grid {
