@@ -26,8 +26,12 @@ await using var db = new ErpDbContext(options, tenant);
 await db.Database.MigrateAsync();
 await RevokeDefinerMembershipAsync();
 
+// Deployed cells run without --seed-demo, yet their smoke check sets seller details on the bootstrap Mandant.
+await SeedMandantAsync(db, tenantId, 100, "Northstar Demo GmbH");
+
 if (!seedDemo)
 {
+    await db.SaveChangesAsync();
     Console.WriteLine("Database migrated.");
     return;
 }
@@ -45,7 +49,7 @@ else
 
 if (!await db.Articles.AnyAsync())
 {
-    var article = Article.Create(tenantId, "BIKE-001", "Cityrad Nord", 799m);
+    var article = Article.Create(tenantId, "BIKE-001", "Cityrad Nord", 799m, TaxCode.Standard19);
     db.Articles.Add(article);
     db.StockBalances.Add(StockBalance.Create(tenantId, article.Id, "MAIN", 25));
 }
@@ -64,8 +68,10 @@ if (!await db.Addresses.AnyAsync())
 }
 
 var secondTenantId = Guid.Parse("22222222-2222-2222-2222-222222222222");
-await SeedMandantAsync(db, tenantId, 100, "Northstar Demo GmbH");
 await SeedMandantAsync(db, secondTenantId, 200, "Northstar Zweitfirma GmbH");
+await db.SaveChangesAsync();
+await CompleteDemoSellerAsync(db, tenantId, "Hafenstraße 1", "20095", "22/123/45678", "DE123456789");
+await CompleteDemoSellerAsync(db, secondTenantId, "Speicherstadt 7", "20457", "22/123/98765", null);
 await SeedMembershipsAsync(db, tenantId, secondTenantId);
 await db.SaveChangesAsync();
 Console.WriteLine("Database migrated and development tenant seeded.");
@@ -236,6 +242,21 @@ static async Task SeedMandantAsync(ErpDbContext db, Guid tenantId, long number, 
     {
         db.Mandanten.Add(Mandant.Seed(tenantId, number, firmenname, DateTimeOffset.UtcNow));
     }
+}
+
+// Writes demo seller details only for a Mandant whose details are incomplete, so values entered in the
+// Firma tab survive reseeding.
+static async Task CompleteDemoSellerAsync(
+    ErpDbContext db,
+    Guid tenantId,
+    string street,
+    string postalCode,
+    string steuernummer,
+    string? ustIdNr)
+{
+    var mandant = await db.Mandanten.SingleOrDefaultAsync(item => item.Id == tenantId);
+    if (mandant is null || mandant.MissingSellerFields().Count == 0) return;
+    mandant.ChangeSellerDetails(street, postalCode, "Hamburg", "DE", null, steuernummer, ustIdNr);
 }
 
 static async Task SeedMembershipsAsync(ErpDbContext db, Guid tenantId, Guid secondTenantId)

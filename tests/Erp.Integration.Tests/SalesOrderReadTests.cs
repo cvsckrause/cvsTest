@@ -92,6 +92,42 @@ public sealed class SalesOrderReadTests(PostgresFixture fixture)
         Assert.Equal("[]", invoices.Body.Trim());
     }
 
+    [Fact]
+    public async Task List_and_detail_agree_on_the_rounded_net_and_lines_keep_their_snapshot()
+    {
+        using var api = fixture.OpenSession(fixture.TenantA);
+        var suffix = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
+        var bolt = await api.PostOkAsync("/api/v1/articles", new { sku = $"BOLT-{suffix}", name = "Schraube", salesPrice = 0.3335m, openingStock = 10m });
+        var nut = await api.PostOkAsync("/api/v1/articles", new { sku = $"NUT-{suffix}", name = "Mutter", salesPrice = 0.125m, openingStock = 10m, taxCode = "Reduced7" });
+        var order = await api.PostOkAsync(
+            "/api/v1/sales-orders",
+            new
+            {
+                customerId = fixture.SeedA.CustomerId,
+                shipToAddressId = fixture.SeedA.AddressId,
+                orderNumber = $"ROUND-{suffix}",
+                lines = new[] { new { articleId = bolt.Id, quantity = 3m }, new { articleId = nut.Id, quantity = 1m } }
+            },
+            $"round-{suffix}");
+        await api.PutAsync($"/api/v1/articles/{bolt.Id}", new { name = "Schraube neu", salesPrice = 1m });
+
+        var detail = await api.GetAsync($"/api/v1/sales-orders/{order.Id}");
+        using var detailDoc = JsonDocument.Parse(detail.Body);
+        Assert.Equal(1.13m, detailDoc.RootElement.GetProperty("netAmount").GetDecimal());
+        var lines = detailDoc.RootElement.GetProperty("lines");
+        Assert.Equal("Schraube", lines[0].GetProperty("description").GetString());
+        Assert.Equal("Standard19", lines[0].GetProperty("taxCode").GetString());
+        Assert.Equal(1.00m, lines[0].GetProperty("netAmount").GetDecimal());
+        Assert.Equal("Mutter", lines[1].GetProperty("description").GetString());
+        Assert.Equal("Reduced7", lines[1].GetProperty("taxCode").GetString());
+        Assert.Equal(0.13m, lines[1].GetProperty("netAmount").GetDecimal());
+
+        var list = await api.GetAsync("/api/v1/sales-orders?status=Draft&limit=200");
+        using var listDoc = JsonDocument.Parse(list.Body);
+        var summary = listDoc.RootElement.EnumerateArray().Single(item => item.GetProperty("id").GetGuid() == order.Id);
+        Assert.Equal(1.13m, summary.GetProperty("netAmount").GetDecimal());
+    }
+
     private async Task<(Guid Id, string Number)> CreateDraftOrderAsync(ApiSession api, string label)
     {
         var suffix = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();

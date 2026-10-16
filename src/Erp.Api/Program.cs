@@ -301,6 +301,7 @@ api.MapInventoryEndpoints();
 api.MapSalesEndpoints();
 api.MapMembershipEndpoints();
 api.MapSessionEndpoints();
+api.MapMandantEndpoints();
 api.MapRegistrationEndpoints();
 
 app.MapFallbackToFile("index.html");

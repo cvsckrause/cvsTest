@@ -23,6 +23,13 @@ test('names the stamm tab and the open master-data document', () => {
   )
 })
 
+test('names the Firma tab without a document', () => {
+  expect(parseRoute('/stamm/firma')).toEqual({ workspace: 'stamm', tab: 'firma', documentId: null })
+  expect(parseRoute('/stamm/firma/anything')).toEqual({ workspace: 'stamm', tab: 'firma', documentId: null })
+  expect(formatRoute({ workspace: 'stamm', tab: 'firma', documentId: null })).toBe('/stamm/firma')
+  expect(formatRoute({ workspace: 'stamm', tab: 'firma', documentId: 'stale' })).toBe('/stamm/firma')
+})
+
 test('names the lager workspace', () => {
   expect(parseRoute('/lager')).toEqual({ workspace: 'lager' })
   expect(formatRoute({ workspace: 'lager' })).toBe('/lager')

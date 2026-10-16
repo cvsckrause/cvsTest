@@ -11,7 +11,7 @@ import type {
   SalesOrder,
   SalesOrderSummary,
 } from '../api'
-import { keepOrFirst } from '../format'
+import { keepOrFirst, roundCents } from '../format'
 import type { AppRoute } from '../route'
 
 const initialOrderNumber = ''
@@ -241,7 +241,7 @@ export function useSalesWorkspace({
   }, [selectedCustomerId, setNotice])
 
   const netAmount = useMemo(
-    () => lines.reduce((total, line) => total + line.quantity * line.unitPrice, 0),
+    () => roundCents(lines.reduce((total, line) => total + line.netAmount, 0)),
     [lines],
   )
 
@@ -255,8 +255,11 @@ export function useSalesWorkspace({
       {
         articleId: article.id,
         sku: article.sku,
+        description: article.name,
+        taxCode: article.taxCode,
         quantity,
         unitPrice: article.salesPrice,
+        netAmount: roundCents(quantity * article.salesPrice),
       },
     ])
     setQuantity(1)

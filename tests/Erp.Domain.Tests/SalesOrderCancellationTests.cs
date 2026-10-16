@@ -18,7 +18,7 @@ public sealed class SalesOrderCancellationTests
     public void Cancelling_a_released_order_keeps_lines_and_rejects_a_second_cancel()
     {
         var order = SalesOrder.Create(TenantId, CustomerId, "SO-20001", ShipToAddressId, SampleShipTo);
-        order.AddLine(ArticleId, "BIKE-001", 2, 10m);
+        order.AddLine(ArticleId, "BIKE-001", "Cityrad", TaxCode.Standard19, 2, 10m);
         order.Release();
 
         var cancelled = order.Cancel();
@@ -34,7 +34,7 @@ public sealed class SalesOrderCancellationTests
     public void Cancelling_a_draft_leaves_released_at_unset()
     {
         var order = SalesOrder.Create(TenantId, CustomerId, "SO-20002", ShipToAddressId, SampleShipTo);
-        order.AddLine(ArticleId, "BIKE-001", 1, 10m);
+        order.AddLine(ArticleId, "BIKE-001", "Cityrad", TaxCode.Standard19, 1, 10m);
 
         order.Cancel();
 
@@ -46,7 +46,7 @@ public sealed class SalesOrderCancellationTests
     public void Releasing_a_cancelled_order_is_rejected()
     {
         var order = SalesOrder.Create(TenantId, CustomerId, "SO-20003", ShipToAddressId, SampleShipTo);
-        order.AddLine(ArticleId, "BIKE-001", 1, 10m);
+        order.AddLine(ArticleId, "BIKE-001", "Cityrad", TaxCode.Standard19, 1, 10m);
         order.Cancel();
 
         Assert.Throws<InvalidOperationException>(() => order.Release());

@@ -20,7 +20,7 @@ function jsonResponse(data: unknown, ok = true, status = ok ? 200 : 400) {
 }
 
 const customer = { id: 'customer-1', number: '10000', name: 'Nordrad GmbH' }
-const article = { id: 'article-1', sku: 'BIKE-001', name: 'Cityrad', salesPrice: 799 }
+const article = { id: 'article-1', sku: 'BIKE-001', name: 'Cityrad', salesPrice: 799, taxCode: 'Standard19' }
 const address = {
   id: 'address-1',
   name: 'Nordrad GmbH',
@@ -76,7 +76,7 @@ const salesOrder = {
   status: 'Released',
   warehouseCode: 'MAIN',
   netAmount: 799,
-  lines: [{ articleId: 'article-1', sku: 'BIKE-001', quantity: 1, unitPrice: 799 }],
+  lines: [{ articleId: 'article-1', sku: 'BIKE-001', description: 'Cityrad', taxCode: 'Standard19', quantity: 1, unitPrice: 799, netAmount: 799 }],
   createdAt: '2026-10-15T10:00:00.000Z',
 }
 
@@ -163,6 +163,151 @@ test('shows the problem detail when saving an article is rejected', async () => 
   expect((await screen.findAllByText('An article with this SKU already exists.')).length).toBeGreaterThan(0)
 })
 
+test('sends the chosen tax code when creating an article and lists the rate', async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url.includes('/articles') && init?.method === 'POST') return jsonResponse({ ...article, id: 'article-2', taxCode: 'Reduced7' }, true, 201)
+    return route(url)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  render(<App />)
+  fireEvent.click(screen.getByTitle('Stammdaten'))
+  const articleTable = await screen.findByRole('table', { name: 'Artikelliste' })
+  expect(within(articleTable).getByText('19 %')).toBeInTheDocument()
+
+  fireEvent.change(screen.getByLabelText('SKU'), { target: { value: 'BOOK-001' } })
+  fireEvent.change(screen.getByLabelText('Bezeichnung'), { target: { value: 'Fahrradbuch' } })
+  fireEvent.change(screen.getByLabelText('Umsatzsteuer'), { target: { value: 'Reduced7' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Artikel anlegen' }))
+
+  await waitFor(() => {
+    const createCall = fetchMock.mock.calls.find(([requestUrl, requestInit]) =>
+      String(requestUrl).includes('/articles') && requestInit?.method === 'POST')
+    expect(JSON.parse(String(createCall?.[1]?.body))).toMatchObject({ sku: 'BOOK-001', taxCode: 'Reduced7' })
+  })
+})
+
+test('keeps the article tax code when an article is edited', async () => {
+  const reduced = { ...article, taxCode: 'Reduced7' }
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url.endsWith('/articles/article-1') && init?.method === 'PUT') return jsonResponse({ ...reduced, salesPrice: 849 })
+    if (url.endsWith('/articles/article-1')) return jsonResponse(reduced)
+    if (url.includes('/articles')) return jsonResponse([reduced])
+    return route(url)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  render(<App />)
+  fireEvent.click(screen.getByTitle('Stammdaten'))
+  await screen.findByRole('heading', { name: 'Artikel anlegen' })
+  fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten' }))
+  await screen.findByRole('heading', { name: 'Artikel bearbeiten' })
+  await waitFor(() => {
+    expect(screen.getByLabelText('Umsatzsteuer')).toHaveValue('Reduced7')
+  })
+  fireEvent.change(screen.getByLabelText('Verkaufspreis'), { target: { value: '849' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Artikel speichern' }))
+
+  await waitFor(() => {
+    const updateCall = fetchMock.mock.calls.find(([requestUrl, requestInit]) =>
+      String(requestUrl).endsWith('/articles/article-1') && requestInit?.method === 'PUT')
+    expect(JSON.parse(String(updateCall?.[1]?.body))).toMatchObject({ salesPrice: 849, taxCode: 'Reduced7' })
+  })
+})
+
+test('tells a missing Mandant apart from a failed load on the Firma tab', async () => {
+  let sellerStatus = 404
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url.endsWith('/mandant/seller')) return jsonResponse({ detail: 'nope' }, false, sellerStatus)
+    return route(url)
+  }))
+  window.history.replaceState(null, '', '/stamm/firma')
+
+  render(<App />)
+  expect(await screen.findByText('Für diesen Mandanten sind keine Firmendaten hinterlegt.')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Firmendaten speichern' })).not.toBeInTheDocument()
+
+  cleanup()
+  sellerStatus = 500
+  render(<App />)
+  expect(await screen.findByText(/Firmendaten konnten nicht geladen werden/)).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Firmendaten speichern' })).not.toBeInTheDocument()
+})
+
+test('edits the seller details on the Firma tab with a read-only Firmenname', async () => {
+  const seller = {
+    mandantNumber: 100,
+    firmenname: 'Northstar Demo GmbH',
+    street: null,
+    postalCode: null,
+    city: null,
+    countryCode: null,
+    additionalLine: null,
+    steuernummer: null,
+    ustIdNr: null,
+    missingFields: ['street', 'postalCode', 'city', 'countryCode', 'steuernummerOrUstIdNr'],
+  }
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url.endsWith('/mandant/seller') && init?.method === 'PUT') {
+      return jsonResponse({ ...seller, ...JSON.parse(String(init.body)), ustIdNr: 'DE123456789', missingFields: [] })
+    }
+    if (url.endsWith('/mandant/seller')) return jsonResponse(seller)
+    return route(url)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  window.history.replaceState(null, '', '/stamm/firma')
+
+  render(<App />)
+  const firmenname = await screen.findByDisplayValue('Northstar Demo GmbH')
+  expect(firmenname).toBeDisabled()
+  expect(window.location.pathname).toBe('/stamm/firma')
+
+  fireEvent.change(screen.getByLabelText('Straße'), { target: { value: 'Hafenstraße 1' } })
+  fireEvent.change(screen.getByLabelText('PLZ'), { target: { value: '20095' } })
+  fireEvent.change(screen.getByLabelText('Ort'), { target: { value: 'Hamburg' } })
+  fireEvent.change(screen.getByLabelText('USt-IdNr.'), { target: { value: 'de 123 456 789' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Firmendaten speichern' }))
+
+  expect((await screen.findAllByText('Firmendaten gespeichert.')).length).toBeGreaterThan(0)
+  const putCall = fetchMock.mock.calls.find(([requestUrl, requestInit]) =>
+    String(requestUrl).endsWith('/mandant/seller') && requestInit?.method === 'PUT')
+  expect(JSON.parse(String(putCall?.[1]?.body))).toEqual({
+    street: 'Hafenstraße 1',
+    postalCode: '20095',
+    city: 'Hamburg',
+    countryCode: 'DE',
+    additionalLine: null,
+    steuernummer: null,
+    ustIdNr: 'de 123 456 789',
+  })
+  expect(screen.getByLabelText('USt-IdNr.')).toHaveValue('DE123456789')
+})
+
+test('rounds each draft line to cents before summing the order net', async () => {
+  const bolt = { id: 'article-2', sku: 'BOLT-01', name: 'Schraube', salesPrice: 0.125, taxCode: 'Reduced7' }
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url.includes('/articles')) return jsonResponse([bolt])
+    return route(url)
+  }))
+
+  render(<App />)
+  await openNewOrder()
+  await screen.findByRole('option', { name: 'BOLT-01 · Schraube' })
+  fireEvent.click(screen.getByRole('button', { name: 'Position hinzufügen' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Position hinzufügen' }))
+
+  const lineTable = screen.getByRole('table', { name: 'Auftragspositionen' })
+  const [, firstLine] = within(lineTable).getAllByRole('row')
+  expect(firstLine.querySelector('strong:last-of-type')).toHaveTextContent('0,13 €')
+  const warenwert = screen.getByText('Warenwert').parentElement as HTMLElement
+  expect(within(warenwert).getByText('0,26 €')).toBeInTheDocument()
+})
+
 test('shows the sales order list and opens capture from it', async () => {
   render(<App />)
 
@@ -194,7 +339,7 @@ test('opens stamm workspace for articles and addresses', async () => {
 
   fireEvent.click(screen.getAllByTitle('Stammdaten')[0])
 
-  expect(await screen.findByRole('heading', { name: 'Artikel & Adressen' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Artikel, Adressen & Firma' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Artikel anlegen' })).toBeInTheDocument()
 
   fireEvent.click(screen.getByRole('button', { name: /Adressen/ }))
@@ -561,7 +706,7 @@ test('does not reopen the previous Mandant Stamm document after a switch', async
   })
 
   fireEvent.click(screen.getByTitle('Stammdaten'))
-  expect(await screen.findByRole('heading', { name: 'Artikel & Adressen' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Artikel, Adressen & Firma' })).toBeInTheDocument()
   expect(window.location.pathname).toBe('/stamm/articles')
   const articleReads = fetchMock.mock.calls.filter(([requestUrl, requestInit]) =>
     String(requestUrl).includes('/articles/article-1')

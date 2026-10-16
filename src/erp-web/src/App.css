@@ -338,7 +338,7 @@ main.lager-main {
 }
 
 .stamm-tabs {
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
 }
 
 .stamm-workspace {
@@ -371,7 +371,7 @@ main.lager-main {
 .master-row {
   min-height: 44px;
   display: grid;
-  grid-template-columns: 120px minmax(160px, 1.6fr) 110px 120px;
+  grid-template-columns: 120px minmax(160px, 1.6fr) 110px 60px 120px;
   align-items: center;
   gap: 8px;
   padding: 0 12px;
