@@ -203,6 +203,7 @@ public sealed class ErpDbContext(
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Key).HasMaxLength(200);
             entity.Property(x => x.Operation).HasMaxLength(100);
+            entity.Property(x => x.Fingerprint).HasMaxLength(64);
             entity.HasIndex(x => new { x.TenantId, x.Operation, x.Key }).IsUnique();
             entity.HasQueryFilter(x => x.TenantId == tenantContext.TenantId);
         });
