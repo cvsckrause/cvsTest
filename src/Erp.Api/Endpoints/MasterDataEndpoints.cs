@@ -220,7 +220,7 @@ internal static class MasterDataEndpoints
             var article = await db.Articles.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
             if (article is null) return Results.NotFound();
 
-            article.Update(request.Name, request.SalesPrice, request.TaxCode is null ? article.TaxCode : ParseTaxCode(request.TaxCode));
+            article.Update(request.Name, request.SalesPrice, string.IsNullOrWhiteSpace(request.TaxCode) ? article.TaxCode : ParseTaxCode(request.TaxCode));
             await db.SaveChangesAsync(cancellationToken);
             return Results.Ok(ToArticleResponse(article));
         }).Produces<ArticleResponse>().Produces(StatusCodes.Status404NotFound);

@@ -24,6 +24,9 @@ public sealed class ArticleTaxCodeTests(PostgresFixture fixture)
 
         var renamed = await api.PutAsync($"/api/v1/articles/{created.Id}", new { name = "Fahrradbuch 2", salesPrice = 21m });
         Assert.Equal("Zero", TaxCodeOf(renamed.Body));
+
+        var blank = await api.PutAsync($"/api/v1/articles/{created.Id}", new { name = "Fahrradbuch 2", salesPrice = 21m, taxCode = " " });
+        Assert.Equal("Zero", TaxCodeOf(blank.Body));
     }
 
     [Fact]

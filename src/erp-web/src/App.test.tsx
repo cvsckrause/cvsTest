@@ -188,6 +188,55 @@ test('sends the chosen tax code when creating an article and lists the rate', as
   })
 })
 
+test('keeps the article tax code when an article is edited', async () => {
+  const reduced = { ...article, taxCode: 'Reduced7' }
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url.endsWith('/articles/article-1') && init?.method === 'PUT') return jsonResponse({ ...reduced, salesPrice: 849 })
+    if (url.endsWith('/articles/article-1')) return jsonResponse(reduced)
+    if (url.includes('/articles')) return jsonResponse([reduced])
+    return route(url)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  render(<App />)
+  fireEvent.click(screen.getByTitle('Stammdaten'))
+  await screen.findByRole('heading', { name: 'Artikel anlegen' })
+  fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten' }))
+  await screen.findByRole('heading', { name: 'Artikel bearbeiten' })
+  await waitFor(() => {
+    expect(screen.getByLabelText('Umsatzsteuer')).toHaveValue('Reduced7')
+  })
+  fireEvent.change(screen.getByLabelText('Verkaufspreis'), { target: { value: '849' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Artikel speichern' }))
+
+  await waitFor(() => {
+    const updateCall = fetchMock.mock.calls.find(([requestUrl, requestInit]) =>
+      String(requestUrl).endsWith('/articles/article-1') && requestInit?.method === 'PUT')
+    expect(JSON.parse(String(updateCall?.[1]?.body))).toMatchObject({ salesPrice: 849, taxCode: 'Reduced7' })
+  })
+})
+
+test('tells a missing Mandant apart from a failed load on the Firma tab', async () => {
+  let sellerStatus = 404
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url.endsWith('/mandant/seller')) return jsonResponse({ detail: 'nope' }, false, sellerStatus)
+    return route(url)
+  }))
+  window.history.replaceState(null, '', '/stamm/firma')
+
+  render(<App />)
+  expect(await screen.findByText('Für diesen Mandanten sind keine Firmendaten hinterlegt.')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Firmendaten speichern' })).not.toBeInTheDocument()
+
+  cleanup()
+  sellerStatus = 500
+  render(<App />)
+  expect(await screen.findByText(/Firmendaten konnten nicht geladen werden/)).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Firmendaten speichern' })).not.toBeInTheDocument()
+})
+
 test('edits the seller details on the Firma tab with a read-only Firmenname', async () => {
   const seller = {
     mandantNumber: 100,
