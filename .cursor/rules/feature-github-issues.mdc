@@ -1,0 +1,15 @@
+---
+description: Always open a GitHub issue when Christian asks for a new feature
+alwaysApply: true
+---
+
+# Feature requests → GitHub issues
+
+When Christian asks for a **new feature** (product/UI/API behavior that is not a pure bugfix or drive-by cleanup):
+
+1. **Create a GitHub issue first** (or as the first execution step after plan approval) with `gh issue create`.
+2. Do **not** wait to be reminded — this is the default workflow.
+3. Issue body should include a short summary and acceptance criteria.
+4. Reference the issue in the commit message or PR description when implementing (`Fixes #N` / `Closes #N` when appropriate).
+
+Bug fixes, clarifying questions, and refactor-only asks do not require a new issue unless he asks for one.

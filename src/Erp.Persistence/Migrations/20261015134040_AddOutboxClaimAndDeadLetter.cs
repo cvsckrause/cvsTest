@@ -99,8 +99,10 @@ namespace Erp.Persistence.Migrations
                     SELECT count(*)::integer FROM replayed;
                 $$;
 
+                GRANT CREATE ON SCHEMA erp TO erp_outbox_definer;
                 ALTER FUNCTION erp.claim_outbox(integer) OWNER TO erp_outbox_definer;
                 ALTER FUNCTION erp.replay_outbox(uuid) OWNER TO erp_outbox_definer;
+                REVOKE CREATE ON SCHEMA erp FROM erp_outbox_definer;
                 REVOKE ALL ON FUNCTION erp.claim_outbox(integer) FROM PUBLIC;
                 REVOKE ALL ON FUNCTION erp.replay_outbox(uuid) FROM PUBLIC;
                 GRANT USAGE ON SCHEMA erp TO erp_outbox_definer, erp_worker;

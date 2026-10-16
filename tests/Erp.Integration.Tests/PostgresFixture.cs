@@ -184,17 +184,8 @@ public sealed class PostgresFixture : IAsyncLifetime
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
             """
-            do $$
-            begin
-                create role erp_app login password 'erp_app' nosuperuser nobypassrls;
-            exception
-                when duplicate_object then null;
-            end
-            $$;
-            grant usage on schema erp to erp_app;
-            grant select, insert, update, delete on all tables in schema erp to erp_app;
-            grant usage, select on all sequences in schema erp to erp_app;
-            alter role erp_worker login password 'erp_worker';
+            alter role erp_app with login password 'erp_app';
+            alter role erp_worker with login password 'erp_worker';
             """,
             connection);
         await command.ExecuteNonQueryAsync();

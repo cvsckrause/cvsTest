@@ -21,7 +21,7 @@ List prices, idle, `eu-north-1`, ~730 hours. Public IPv4 is in-scope because thi
 | RDS PostgreSQL `db.t4g.micro` + 20 GB | USD 14–17 |
 | Two Fargate tasks (0.25 vCPU / 512 MB, x86) | USD 18–20 |
 | Two Fargate public IPv4 addresses | USD 7 |
-| KMS + Secrets Manager + logs | USD 2–4 |
+| KMS + Secrets Manager (master plus `erp_owner`, `erp_app`, `erp_worker`) + logs | USD 2–4 |
 | CloudFront (default certificate, price class 100) | usage-priced, near zero idle |
 | SQS, EventBridge, S3, Cognito, ECR | usage-priced, near zero idle |
 
@@ -49,6 +49,14 @@ After deploy, run the migrator once (subnet and security group IDs come from sta
 ```powershell
 aws ecs run-task --cluster <ClusterName> --launch-type FARGATE --task-definition <MigratorTaskDefinitionArn> --network-configuration "awsvpcConfiguration={subnets=[<public-subnet>],securityGroups=[<MigratorSecurityGroupId>],assignPublicIp=ENABLED}"
 ```
+
+The migrator uses the RDS master password only to install `erp_owner`, `erp_app`, and `erp_worker`, then applies migrations as `erp_owner`. The API connects as `erp_app` (DML only). The worker connects as `erp_worker` (DML plus `claim_outbox`). That run does not load demo data. To seed the development tenant, add:
+
+```powershell
+--overrides "{\"containerOverrides\":[{\"name\":\"Migrator\",\"command\":[\"--seed-demo\"]}]}"
+```
+
+A database that still has trading tables but no `erp."__EFMigrationsHistory"` row for `InitialTradingSchema` must be destroyed and recreated. The migrator no longer patches that history.
 
 The UI is baked into the API image and served from CloudFront (same origin as `/api/v1`). Open `https://<DistributionDomainName>/`. CloudFront redirects HTTP to HTTPS and uses the default `*.cloudfront.net` certificate. `/api/*` is not cached. The ALB stays HTTP and accepts port 80 only from the CloudFront origin-facing prefix list, so a direct request to the ALB from the internet is refused. Local Vite (`npm run dev --prefix src/erp-web`) remains optional for UI-only development and still proxies `/api` via `ERP_API_ORIGIN`.
 
