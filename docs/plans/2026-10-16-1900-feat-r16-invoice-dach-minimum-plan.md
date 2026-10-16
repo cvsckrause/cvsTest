@@ -20,8 +20,8 @@ execution: code
   - Stop if any path could number an invoice that lacks the seller address or tax number.
   - Do not grant `erp_worker` access to `erp.mandanten`.
   - Do not rewrite stored invoice rows.
-  - Do not start Phase D until the requester answers Q1. R17, R18, and AE9 are rewritten to match the answer first.
-- **Ships as:** Three pull requests against `main`, one per phase A–C. Phase D (reverse charge) is a fourth pull request that can be cut without affecting A–C.
+  - Do not issue a 0 % intra-EU invoice without both USt-IdNrs and a ship-to in another EU member state (R18, R20, R21).
+- **Ships as:** Three pull requests against `main`, one per phase A–C. Phase D (tax-free intra-EU supply) is a fourth pull request that can be cut without affecting A–C.
 
 ---
 
@@ -29,7 +29,7 @@ execution: code
 
 ### Summary
 
-Articles get a VAT code (19 %, 7 %, 0 %), and order lines freeze the code and the article description next to the price. Each Mandant records its seller details (address plus Steuernummer or USt-IdNr), and releasing an order is refused while they are incomplete. Orders freeze a bill-to taken from the customer's Billing address. The worker then issues an invoice with lines, per-rate tax totals, grand totals, invoice and delivery dates, and seller and buyer snapshots. The API returns that content and the sales workspace shows it. Reverse charge follows in Phase D as a customer property with a mandatory buyer USt-IdNr.
+Articles get a VAT code (19 %, 7 %, 0 %), and order lines freeze the code and the article description next to the price. Each Mandant records its seller details (address plus Steuernummer or USt-IdNr), and releasing an order is refused while they are incomplete. Orders freeze a bill-to taken from the customer's Billing address. The worker then issues an invoice with lines, per-rate tax totals, grand totals, invoice and delivery dates, and seller and buyer snapshots. The API returns that content and the sales workspace shows it. A saved order already shows net, tax, and gross per rate, and its invoice carries the same figures. Tax-free intra-EU supplies follow in Phase D as a customer property with a mandatory foreign buyer USt-IdNr.
 
 ### Problem Frame
 
@@ -43,11 +43,13 @@ Three facts in the current code shape the work:
 
 ### Key Decisions
 
-- KD1. **Reverse charge is a customer property, not an article tax code.** §13b and §14a UStG make reverse charge depend on the buyer and require the buyer's USt-IdNr on the invoice. An article-level flag would print 0 % for domestic buyers. This reads D4's "reverse-charge flag" as a flag on the customer and departs from the issue's wording (see Q1). Governs R1, R17, R18.
+- KD1. **Phase D's 0 % case is a tax-free intra-EU supply of goods, flagged on the customer.** D4's "reverse-charge flag" is read as §4 Nr. 1b and §6a UStG: a business buyer in another EU member state, goods shipped there, VAT category K, and the note "Steuerfreie innergemeinschaftliche Lieferung". §14a Abs. 3 UStG requires both USt-IdNrs on that invoice. Domestic reverse charge under §13b (category AE) stays out of scope. (session-settled: user-approved — chosen over domestic §13b reverse charge on the customer and over §13b goods flagged on the article: Mark picked a customer-level flag for selling to businesses in other EU states such as Austria, which is the §6a case.) Governs R17, R18, R20, R21.
 - KD2. **Seller details belong to the Mandant and gate release.** Without them no compliant invoice is possible, and the release is the last point where the user can still fix it. The form ships one phase before the gate, so each Mandant can enter its details before releases depend on them. Governs R3, R4.
 - KD3. **The bill-to is chosen when the order is created, like the ship-to.** It keeps the invoice deterministic across retries and replays. Governs R5.
 - KD4. **Invoices issued before this change stay as issued.** GoBD forbids rewriting issued invoices. They are flagged as incomplete instead of being backfilled. Governs R12.
 - KD5. **The order's net amount switches to the rounded line sum.** The order and its invoice then show the same Nettobetrag. Governs R13.
+- KD6. **Invoices issued before E-2 ships are internal records and are never sent.** E-2 sends only invoices it issues after it ships, so R-16 adds no send or export path and E-2 never re-renders an older invoice. (session-settled: user-directed — chosen over E-2 sending R-16 invoices as issued and over E-2 completing seller data at send time: nobody receives invoices before E-2, and send-time completion would make a sent invoice differ from the issued one.)
+- KD7. **A saved order shows tax and gross per rate, computed exactly as its invoice will be.** The line tax code is frozen at order creation (R2), so the order can show what the invoice will say. (session-settled: user-directed — chosen over computing tax only when the invoice is issued: what the user saw on the order is exactly what the invoice says.) Governs R19.
 
 ### Requirements
 
@@ -75,6 +77,7 @@ Invoice content
 Order totals
 
 - R13. The order's net amount in the order detail, the order list, and the order summary equals the sum of its rounded line nets (R7).
+- R19. A saved order shows net, tax, and gross per rate and in total, computed per R7 from its frozen line tax codes. Its invoice carries the same figures.
 
 Presentation
 
@@ -82,10 +85,12 @@ Presentation
 - R15. The invoice step in the sales workspace shows the invoice header, seller, buyer, lines, per-rate totals, and grand totals. An incomplete invoice shows a notice instead of empty sections.
 - R16. The Stamm workspace lets users set an article's tax code and edit the seller details. Order capture offers a bill-to choice when the customer has more than one Billing address.
 
-Reverse charge (Phase D, provisional until Q1 is answered)
+Tax-free intra-EU supply (Phase D)
 
-- R17. A customer has an optional USt-IdNr and a reverse-charge flag, and the flag requires a USt-IdNr. Name, USt-IdNr, and flag can be edited.
-- R18. An order for a reverse-charge customer freezes the flag and the buyer's USt-IdNr at creation. Its invoice taxes every line at 0 % in VAT category AE, shows the buyer's USt-IdNr, and prints "Steuerschuldnerschaft des Leistungsempfängers".
+- R17. A customer has an optional USt-IdNr and an intra-EU supply flag. The flag requires a USt-IdNr from an EU member state other than Germany. Name, USt-IdNr, and flag can be edited.
+- R18. An order for a flagged customer freezes the flag and the buyer's USt-IdNr at creation. Creation returns 400 when the ship-to country is Germany or outside the EU.
+- R20. Releasing a flagged order returns 409 while the Mandant has no USt-IdNr. A Steuernummer alone is not enough for an intra-EU invoice.
+- R21. The invoice of a flagged order taxes every line at 0 % in VAT category K, shows the seller's and the buyer's USt-IdNr, and prints "Steuerfreie innergemeinschaftliche Lieferung".
 
 ### Acceptance Examples
 
@@ -97,7 +102,9 @@ Reverse charge (Phase D, provisional until Q1 is answered)
 - AE6. Covers R9. The seller's street changes after release but before the worker runs, and the invoice shows the street at release. An article renamed after order creation keeps its old name on the invoice.
 - AE7. Covers R8. The worker creates the documents at 2026-12-31T23:30Z. Invoice date and delivery date are both 2027-01-01.
 - AE8. Covers R12, R14, R15. An invoice created before the migration returns `contentComplete: false` with its number and net amount, empty lines, and no tax totals. The UI shows "Altbeleg – Inhalt unvollständig".
-- AE9. Covers R18, provisional until Q1 is answered. An order for a reverse-charge customer with USt-IdNr `DE123456789` yields an invoice whose lines are all 0 % category AE, with tax 0.00, the buyer's USt-IdNr, and the reverse-charge note.
+- AE9. Covers R18, R21. A flagged customer with USt-IdNr `ATU12345678` and a ship-to in Vienna (`AT`) orders one 19 % article and one 7 % article. The invoice taxes both lines at 0 % category K with tax 0.00, shows the seller's and the buyer's USt-IdNr, and prints the intra-EU note.
+- AE10. Covers R18, R20. The same customer with a ship-to in Munich (`DE`) gets 400 at order creation. A Mandant with only a Steuernummer gets 409 when releasing a flagged order.
+- AE11. Covers R19. An unreleased order with the AE3 lines shows 19 %: net 1598.00, tax 303.62, and 7 %: net 38.97, tax 2.73, with gross 1943.32. Its invoice shows the same figures.
 
 ### Scope Boundaries
 
@@ -105,7 +112,10 @@ Reverse charge (Phase D, provisional until Q1 is answered)
 - No AT or CH rates. D4 adds them later as data behind the KTD3 lookup.
 - No credit notes or corrections. E-3 [#35](https://github.com/cvsckrause/cvsTest/issues/35) owns them.
 - No PDF, print layout, XRechnung, or ZUGFeRD output. E-2 owns them.
-- No exemption notes for tax-exempt supplies (§4 UStG), no intra-EU supply (§6a) unless Q1 moves it into Phase D, and no Kleinunternehmer (§19). `Zero` means the 0 % rate only (R10).
+- No exemption notes for tax-exempt supplies (§4 UStG) other than the intra-EU note (R21), no domestic reverse charge (§13b), and no Kleinunternehmer (§19). `Zero` means the 0 % rate only (R10).
+- No VIES check of USt-IdNrs (format and country prefix only), no Zusammenfassende Meldung, and no proof-of-transport handling for intra-EU supplies.
+- No tax or gross in the order capture draft. R19 covers saved orders.
+- No sending, export, or re-rendering of invoices issued before E-2 ships (KD6).
 - No discounts, payment terms, partial deliveries, or several invoices per order.
 - Considered and not built: a database trigger that blocks `UPDATE` and `DELETE` on invoice tables. Revoking the rights (KTD6) closes the same gap for every application path. Revisit if a superuser-run job ever writes invoices.
 - Considered and not built: a seller-details check in the worker. The release already refuses incomplete details (R4) and the payload carries them (KTD2), so the worker only checks that the seller block is present. Revisit if a second path starts creating invoices.
@@ -114,15 +124,6 @@ Reverse charge (Phase D, provisional until Q1 is answered)
 
 - Roundup-08 [#107](https://github.com/cvsckrause/cvsTest/issues/107) moves the release handler and the worker's invoice creation into module application handlers. This plan keeps invoice computation inside `Erp.Billing` (U7) so that move stays mechanical.
 - Unit of measure and EN 16931 code lists, in E-2.
-
-### Open Questions
-
-- Q1. *(Blocks Phase D only.)* Which 0 % case does D4's "reverse-charge flag" mean? The candidates are:
-  1. Domestic reverse charge under §13b UStG for a business buyer, category AE with the note "Steuerschuldnerschaft des Leistungsempfängers". This is what R18 and AE9 describe now. For goods, §13b covers only listed goods (answer 3), so a customer flag on its own fits mainly services such as construction work.
-  2. A tax-free intra-EU supply of goods under §4 Nr. 1b and §6a UStG to a business buyer in another member state, category K with the note "steuerfreie innergemeinschaftliche Lieferung". For a goods trader selling into AT this is the more likely case. It needs the buyer's foreign USt-IdNr and a ship-to outside DE.
-  3. §13b goods named on the article, such as scrap metal or mobile phones. These still need the buyer's USt-IdNr, so they add to the customer flag rather than replace it.
-
-  Each answer keeps the customer's USt-IdNr from R17. Answers 2 and 3 change R18, AE9, the KTD3 category mapping, and U12, and answer 2 lifts the §6a scope boundary.
 
 ### Sources
 
@@ -142,7 +143,7 @@ Reverse charge (Phase D, provisional until Q1 is answered)
 
 - KTD1. **The API freezes every invoice input, and the worker reads only the locked order and the event payload.** Order creation freezes line description, tax code, and bill-to on the order. Release reads the seller details through `erp_app`, refuses incomplete ones (R4), and writes them into the release payload. The worker stops reading the payload's `NetAmount` and never reads `Article`, `CustomerAddress`, or `Mandant`. Reason: `erp_worker` cannot read `mandanten`, and any data error in the worker rolls back the delivery and goods issue with it, then dead-letters after five attempts while the UI keeps showing "wird erzeugt …". Freezing up front turns those errors into 4xx responses the user can act on and makes a replay days later produce the same invoice (R9).
 - KTD2. **The release event stays `erp.sales-order.released.v1` and gains a `seller` block one phase before the worker reads it.** The API writes the block from Phase B on, together with the R4 gate. The field is additive, so the Phase B worker, still on the old code, ignores it. The Phase C worker fails a message without a `seller` block rather than issuing an incomplete invoice. By then every message written since Phase B carries the block, including releases accepted by old API tasks during the Phase C rollout, because those tasks already run Phase B code. The Phase C pre-deploy check only confirms that no message from before Phase B is still pending (see Documentation / Operational Notes).
-- KTD3. **Tax codes map to rates and EN 16931 categories in one domain table.** `TaxCode` is an enum in `Erp.BuildingBlocks` (stored as a string), because `Erp.MasterData`, `Erp.Sales`, and `Erp.Billing` all use it and modules may reference only `Erp.BuildingBlocks` (`ModuleBoundaryTests`). A lookup in `Erp.Billing` maps each code to a rate and category: `Standard19` → 19 % S, `Reduced7` → 7 % S, `Zero` → 0 % Z. Reverse charge maps to 0 % AE (Phase D). The rate is looked up when the invoice is issued and stored on each invoice line and tax total. A later rate change therefore never alters an issued invoice, and AT/CH rates (D4) replace one lookup.
+- KTD3. **Tax codes map to rates and EN 16931 categories in one domain table.** `TaxCode` is an enum in `Erp.BuildingBlocks` (stored as a string), because `Erp.MasterData`, `Erp.Sales`, and `Erp.Billing` all use it and modules may reference only `Erp.BuildingBlocks` (`ModuleBoundaryTests`). A lookup in `Erp.Billing` maps each code to a rate and category: `Standard19` → 19 % S, `Reduced7` → 7 % S, `Zero` → 0 % Z. An intra-EU supply maps every line to 0 % K with exemption reason code `VATEX-EU-IC` (Phase D). The rate is looked up when the invoice is issued and stored on each invoice line and tax total. A later rate change therefore never alters an issued invoice, and AT/CH rates (D4) replace one lookup.
 - KTD4. **One rounding function, half away from zero.** `Erp.BuildingBlocks` gets a 2-decimal commercial rounding helper that passes `MidpointRounding.AwayFromZero` explicitly, because .NET's default rounds half to even. The invoice, `SalesOrder.NetAmount`, and the line net all use it. The order list projection rounds each line in SQL with `round(numeric, 2)`, which PostgreSQL also rounds half away from zero, and a test pins that the list and detail amounts match (R13).
 - KTD5. **Invoice content is stored, not recomputed.** `erp.invoices` gains header columns: invoice and delivery date (`date`), seller and buyer snapshot columns, total tax and gross, and `ContentComplete`. The existing `NetAmount` holds the total net and keeps its `numeric(18,4)` type, so legacy values stay exactly as stored. New invoices write it with 2 decimals. Two new tenant tables follow the address-table pattern with `TenantId` and forced `tenant_isolation`: `invoice_lines` and `invoice_tax_totals`. New amount columns are `numeric(18,2)`, unit price and quantity keep `numeric(18,4)`, and rates are `numeric(5,2)` percent.
 - KTD6. **Immutability is enforced by the model and by grants.** `Invoice` exposes no mutators, and no endpoint writes invoices. The migration that creates the invoice tables revokes all rights on `invoices`, `invoice_lines`, and `invoice_tax_totals` from `erp_app` and `erp_worker`, then grants explicitly: `erp_app` gets `SELECT` only, because the API never writes invoices, and `erp_worker` gets `SELECT` and `INSERT`. The default privileges from `SeparateDatabaseRoles` would otherwise grant full DML to both. The migrating owner keeps its rights.
@@ -234,7 +235,6 @@ erDiagram
 
 These are unconfirmed. Work proceeds on them. If one is corrected, the correction replaces the assumption, not the requirement.
 
-- A1. Reverse charge as a customer property (KD1) is what D4 intended. Q1 asks the requester to confirm before Phase D.
 - A2. Any tenant member may edit seller details, because the API has no roles yet. The audit entry is the safeguard.
 - A3. `Zero` covers the 0 % rate under §12 Abs. 3 UStG, which needs no exemption note. Tax-exempt supplies stay out of scope.
 - A4. All invoices are in EUR.
@@ -247,9 +247,9 @@ These are unconfirmed. Work proceeds on them. If one is corrected, the correctio
 
 - Phase A (PR 1): U1, U2, U3. Merge after [PR #110](https://github.com/cvsckrause/cvsTest/pull/110), which also changes `Worker.cs`, `SalesEndpoints.cs`, `Class1.cs`, and the EF model snapshot. Generate this phase's migration on top of #110's migrations.
 - Phase B (PR 2): U4, after Phase A. This phase turns on the R4 gate and writes the seller block into the release payload (KTD2).
-- Phase C (PR 3): U5, U6, U7, U8, U9, U10, after Phase B. U5 is test-first and can start in parallel with Phase B once U1's rounding helper and `TaxCode` are on `main`, because it is pure domain code.
+- Phase C (PR 3): U5, U6, U7, U8, U9, U10, U13, after Phase B. U5 is test-first and can start in parallel with Phase B once U1's rounding helper and `TaxCode` are on `main`, because it is pure domain code.
 - Each phase regenerates `openapi/v1.json` and `api.generated.ts` for its own API changes, because CI fails on a diff after regeneration.
-- Phase D (PR 4): U11, U12, after Phase C and Q1.
+- Phase D (PR 4): U11, U12, after Phase C.
 - Roundup-08 [#107](https://github.com/cvsckrause/cvsTest/issues/107) runs after Phase C.
 
 ```mermaid
@@ -265,8 +265,10 @@ flowchart TB
   U7 --> U8[U8 Invoice API + client]
   U8 --> U9[U9 Invoice UI]
   U7 --> U10[U10 Runbook]
-  U9 --> U11[U11 Customer VAT ID + RC flag]
-  U11 --> U12[U12 Reverse charge on invoice]
+  U5 --> U13[U13 Order tax and gross]
+  U9 --> U11[U11 Customer VAT ID + intra-EU flag]
+  U13 --> U12
+  U11 --> U12[U12 Intra-EU supply on order and invoice]
 ```
 
 ---
@@ -285,8 +287,9 @@ flowchart TB
 | U8 | Invoice API response and generated client | `SalesEndpoints.cs`, `openapi/v1.json`, `api.generated.ts` | U7 |
 | U9 | Invoice panel in the sales workspace | `SalesWorkspace.tsx`, `sales-model.ts`, `App.test.tsx` | U8 |
 | U10 | Release order and smoke check | `docs/operations/aws-dev-cell.md` | U7 |
-| U11 | Customer USt-IdNr and reverse-charge flag | `MasterDataEntities.cs`, `MasterDataEndpoints.cs`, `StammWorkspace.tsx`, `route.ts` | U9 |
-| U12 | Reverse charge on order and invoice | `SalesOrder.cs`, `BillingEntities.cs`, `TaxRates.cs`, `Worker.cs`, UI | U11 |
+| U11 | Customer USt-IdNr and intra-EU supply flag | `MasterDataEntities.cs`, `MasterDataEndpoints.cs`, `StammWorkspace.tsx`, `route.ts` | U9 |
+| U12 | Intra-EU supply on order and invoice | `SalesOrder.cs`, `SalesEndpoints.cs`, `BillingEntities.cs`, `TaxRates.cs`, `Worker.cs`, UI | U11, U13 |
+| U13 | Order tax and gross per rate | `TaxRates.cs`, `SalesEndpoints.cs`, `SalesWorkspace.tsx`, `sales-model.ts` | U5 |
 
 ### U1. Article tax code and commercial rounding
 
@@ -551,11 +554,35 @@ flowchart TB
 - **Test expectation:** none in the test suites. The deploy workflow's smoke step on the Phase C deploy is the test.
 - **Verification:** The Phase C deploy's smoke step passes with the invoice checks. The runbook names the outbox check and the seller-details section. The Phase A, B, and C pull request descriptions repeat their deploy notes.
 
-### U11. Customer USt-IdNr and reverse-charge flag
+### U13. Order tax and gross per rate
 
-- **Goal:** Customers can carry a USt-IdNr and be marked reverse charge.
+- **Goal:** A saved order shows the same per-rate tax and gross that its invoice will carry.
+- **Requirements:** R19, KD7. KTD3, KTD4.
+- **Dependencies:** U5
+- **Files:**
+  - `src/Modules/Erp.Billing/Domain/TaxRates.cs`, `src/Modules/Erp.Billing/Domain/BillingEntities.cs`
+  - `src/Erp.Api/Endpoints/SalesEndpoints.cs`
+  - `src/erp-web/src/workspaces/SalesWorkspace.tsx`, `src/erp-web/src/workspaces/sales-model.ts`
+  - `openapi/v1.json`, `src/erp-web/src/api.generated.ts`
+  - Tests: `tests/Erp.Domain.Tests/InvoiceTests.cs`, `tests/Erp.Integration.Tests/SalesOrderReadTests.cs`, `src/erp-web/src/App.test.tsx`
+- **Approach:**
+  1. Factor U5's grouping by rate and category and its per-rate rounding into one pure function in `Erp.Billing` that takes (tax code, line net) pairs. The invoice factory and the order response both call it, so the two cannot drift.
+  2. `SalesOrderResponse` gains `taxTotals` (rate, category, net, tax), `taxAmount`, and `grossAmount`. The API composes them from the order's frozen line tax codes, because `Erp.Sales` may not reference `Erp.Billing`. The order list keeps showing net only.
+  3. The order summary in the sales workspace shows one "zzgl. … % USt" row per rate and the gross for a saved order. The capture draft keeps showing net only. Never re-add amounts on the client.
+  4. Regenerate the OpenAPI document and the TS types.
+- **Patterns to follow:** U5's factory and AE3 tests. The `summary` block in `SalesWorkspace.tsx`.
+- **Test scenarios:**
+  - Covers AE11. `GET /sales-orders/{id}` for an unreleased order with the AE3 lines returns two tax totals, tax 306.35, and gross 1943.32.
+  - After processing, the order's tax totals equal its invoice's tax totals.
+  - An order whose lines are all `Zero` returns one 0 % Z total with tax 0.00.
+  - Web: a saved order with the AE3 lines shows "19 %" and "7 %" rows and "1.943,32 €" as gross. The capture draft shows no tax rows.
+- **Verification:** All suites pass. The order and invoice share one tax-totals function.
+
+### U11. Customer USt-IdNr and intra-EU supply flag
+
+- **Goal:** Customers can carry a USt-IdNr and be flagged for tax-free intra-EU supply.
 - **Requirements:** R17, KD1.
-- **Dependencies:** U9 and an answer to Q1
+- **Dependencies:** U9
 - **Files:**
   - `src/Modules/Erp.MasterData/Domain/MasterDataEntities.cs`
   - `src/Erp.Api/Endpoints/MasterDataEndpoints.cs` (new `PUT /customers/{id}`)
@@ -564,21 +591,21 @@ flowchart TB
   - `openapi/v1.json`, `src/erp-web/src/api.generated.ts`
   - Tests: new `tests/Erp.Domain.Tests/CustomerTests.cs`, a new or existing master-data integration test file, `src/erp-web/src/route.test.ts`, `src/erp-web/src/App.test.tsx`
 - **Approach:**
-  1. `Customer` gains `VatId` and `ReverseCharge` with the KTD9 normalization rule, plus an `Update` method. The flag without a VAT ID throws.
+  1. `Customer` gains `VatId` and `IntraEuSupply` with the KTD9 normalization rule, plus an `Update` method. The flag throws without a VAT ID, and also when the VAT ID's prefix is `DE` or not an EU member-state prefix (Greece uses `EL`).
   2. Add `PUT /customers/{id}`. `CustomerResponse` returns both fields. Regenerate the OpenAPI document and the TS types.
   3. The Stamm workspace has no customer tab yet. Add `'customers'` to `StammTab`, a "Kunden" tab with list and edit form, and `refreshCustomers` in `master-data.ts` so order capture sees the change.
 - **Patterns to follow:** `Article.Update` and `PUT /articles/{id}`.
 - **Test scenarios:**
-  - Setting the flag without a USt-IdNr returns 400. With `DE123456789` it succeeds.
+  - Setting the flag without a USt-IdNr returns 400, with `DE123456789` it returns 400, and with `ATU12345678` it succeeds.
   - `PUT` renames the customer and stores the normalized USt-IdNr.
   - Web: editing a customer sends the flag and USt-IdNr.
 - **Verification:** All suites pass.
 
-### U12. Reverse charge on order and invoice
+### U12. Intra-EU supply on order and invoice
 
-- **Goal:** Orders for reverse-charge customers produce reverse-charge invoices.
-- **Requirements:** R18. KTD3.
-- **Dependencies:** U11
+- **Goal:** Orders for flagged customers produce tax-free intra-EU invoices.
+- **Requirements:** R18, R20, R21. KTD3.
+- **Dependencies:** U11, U13
 - **Files:**
   - `src/Modules/Erp.Sales/Domain/SalesOrder.cs`, `src/Erp.Api/Endpoints/SalesEndpoints.cs`
   - `src/Modules/Erp.Billing/Domain/BillingEntities.cs`, `src/Modules/Erp.Billing/Domain/TaxRates.cs`
@@ -586,14 +613,17 @@ flowchart TB
   - `src/erp-web/src/workspaces/SalesWorkspace.tsx`, `openapi/v1.json`, `src/erp-web/src/api.generated.ts`
   - Tests: `tests/Erp.Domain.Tests/InvoiceTests.cs`, `tests/Erp.Integration.Tests/InvoiceIssueTests.cs`, `src/erp-web/src/App.test.tsx`
 - **Approach:**
-  1. Order creation freezes the customer's reverse-charge flag and USt-IdNr on the order (buyer columns from U4).
-  2. The issuing factory gets a reverse-charge input. Every line then maps to 0 % category AE regardless of its tax code, the invoice stores the buyer's USt-IdNr and the note text, and a reverse-charge buyer without a USt-IdNr is rejected.
-  3. The API and UI show the buyer's USt-IdNr and the note.
-- **Patterns to follow:** U5's factory and tests. U4's buyer snapshot.
+  1. Order creation freezes the customer's intra-EU flag and USt-IdNr on the order (buyer columns from U4). A flagged order whose ship-to country is `DE` or not an EU member state returns 400 (R18).
+  2. Release of a flagged order returns 409 with `missingSellerFields: ["ustIdNr"]` while the Mandant has no USt-IdNr (R20). The seller block in the payload already carries it.
+  3. The issuing factory gets an intra-EU input. Every line then maps to 0 % category K with exemption reason `VATEX-EU-IC`, regardless of its tax code. The invoice stores both USt-IdNrs and the note, and the factory rejects intra-EU input that lacks either USt-IdNr.
+  4. The U13 order totals show one 0 % K row for a flagged order.
+  5. The API and UI show both USt-IdNrs and the note.
+- **Patterns to follow:** U5's factory and tests. U4's buyer snapshot and release gate.
 - **Test scenarios:**
-  - Covers AE9. Lines at 19 % and 7 % for a reverse-charge customer give one AE 0 % tax total with tax 0.00, the buyer's USt-IdNr, and the note.
-  - Turning the flag off after order creation still yields a reverse-charge invoice for that order (R9).
-  - The UI shows "Steuerschuldnerschaft des Leistungsempfängers" and the buyer's USt-IdNr.
+  - Covers AE9. Lines at 19 % and 7 % for a flagged customer shipping to `AT` give one 0 % K tax total with tax 0.00, both USt-IdNrs, and the note.
+  - Covers AE10. A flagged customer with a ship-to in `DE` gets 400 at creation. A Mandant with only a Steuernummer gets 409 on release of a flagged order, and nothing is reserved.
+  - Turning the flag off after order creation still yields an intra-EU invoice for that order (R9).
+  - The UI shows "Steuerfreie innergemeinschaftliche Lieferung" and both USt-IdNrs.
 - **Verification:** All suites pass.
 
 ---
@@ -602,17 +632,17 @@ flowchart TB
 
 | Check | Command | Proves |
 | --- | --- | --- |
-| Backend | `dotnet test Erp.slnx -c Release` (integration tests need Docker for Testcontainers) | R1–R14, R17, R18, AE1–AE9 |
-| Web | `npm test`, `npm run lint`, `npm run build` in `src/erp-web` | R15, R16 |
-| Contract | `node scripts/export-openapi.mjs`, then `npm run gen:api` in `src/erp-web`, leave no further diff | R14 |
+| Backend | `dotnet test Erp.slnx -c Release` (integration tests need Docker for Testcontainers) | R1–R14, R17–R21, AE1–AE11 |
+| Web | `npm test`, `npm run lint`, `npm run build` in `src/erp-web` | R15, R16, R19 |
+| Contract | `node scripts/export-openapi.mjs`, then `npm run gen:api` in `src/erp-web`, leave no further diff | R14, R19 |
 | Infra | `npx cdk synth` in `infra` | unaffected; run because CI's `infra-synth` check requires it |
 
 Each phase's pull request runs the full table. The Phase A and Phase B upgrade tests in `tests/Erp.Integration.Tests/InvoiceContentUpgradeTests.cs` must fail when their migration's RLS toggle leaves out a table the backfill reads.
 
 ## Definition of Done
 
-- R1–R16 hold after Phase C. After Phase D, R17 and R18 hold in the form the Q1 answer gives them, or Phase D is explicitly dropped.
-- AE1–AE8 pass as tests after Phase C, and AE9, rewritten to match Q1, after Phase D.
+- R1–R16 and R19 hold after Phase C. After Phase D, R17, R18, R20, and R21 hold, or Phase D is explicitly dropped.
+- AE1–AE8 and AE11 pass as tests after Phase C, and AE9 and AE10 after Phase D.
 - No invoice can be numbered without seller address and tax identifier, and `erp_worker` still has no rights on `erp.mandanten`.
 - `erp_app` can only read invoice rows, and `erp_worker` can only read and insert them. Stored invoice values from before the change are unchanged.
 - The runbook and the Phase A, B, and C pull request descriptions carry the deploy notes.
