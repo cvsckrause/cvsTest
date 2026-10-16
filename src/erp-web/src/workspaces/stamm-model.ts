@@ -55,7 +55,7 @@ export function useStammWorkspace({
   const [linkRole, setLinkRole] = useState('Shipping')
   const [seller, setSeller] = useState<SellerDetails | null>(null)
   const [sellerForm, setSellerForm] = useState(emptySeller)
-  const [sellerMissing, setSellerMissing] = useState(false)
+  const [sellerUnavailable, setSellerUnavailable] = useState(false)
 
   const selectedLinkCustomerId = keepOrFirst(linkCustomerId, customers.map((customer) => customer.id))
   const selectedLinkAddressId = keepOrFirst(linkAddressId, addresses.map((address) => address.id))
@@ -113,12 +113,12 @@ export function useStammWorkspace({
     erpApi.sellerDetails()
       .then((loaded) => {
         if (cancelled) return
-        setSellerMissing(false)
+        setSellerUnavailable(false)
         applySeller(loaded)
       })
       .catch((error: Error) => {
         if (cancelled) return
-        setSellerMissing(true)
+        setSellerUnavailable(true)
         setNotice(error.message)
       })
     return () => {
@@ -128,15 +128,7 @@ export function useStammWorkspace({
 
   function applySeller(loaded: SellerDetails) {
     setSeller(loaded)
-    setSellerForm({
-      street: loaded.street ?? '',
-      postalCode: loaded.postalCode ?? '',
-      city: loaded.city ?? '',
-      countryCode: loaded.countryCode ?? 'DE',
-      additionalLine: loaded.additionalLine ?? '',
-      steuernummer: loaded.steuernummer ?? '',
-      ustIdNr: loaded.ustIdNr ?? '',
-    })
+    setSellerForm(sellerFormOf(loaded))
   }
 
   function showFirma() {
@@ -297,7 +289,7 @@ export function useStammWorkspace({
     seller,
     sellerForm,
     setSellerForm,
-    sellerMissing,
+    sellerUnavailable,
     saveSeller,
     editArticle,
     editAddress,
@@ -312,6 +304,18 @@ export function useStammWorkspace({
 
 function articleFormOf(article: Article) {
   return { sku: article.sku, name: article.name, salesPrice: article.salesPrice, openingStock: 0, taxCode: article.taxCode }
+}
+
+function sellerFormOf(seller: SellerDetails) {
+  return {
+    street: seller.street ?? '',
+    postalCode: seller.postalCode ?? '',
+    city: seller.city ?? '',
+    countryCode: seller.countryCode ?? emptySeller.countryCode,
+    additionalLine: seller.additionalLine ?? '',
+    steuernummer: seller.steuernummer ?? '',
+    ustIdNr: seller.ustIdNr ?? '',
+  }
 }
 
 export type StammModel = ReturnType<typeof useStammWorkspace>

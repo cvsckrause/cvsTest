@@ -244,7 +244,8 @@ static async Task SeedMandantAsync(ErpDbContext db, Guid tenantId, long number, 
     }
 }
 
-// Fills demo seller details only where they are incomplete, so values entered in the Firma tab survive reseeding.
+// Writes demo seller details only for a Mandant whose details are incomplete, so values entered in the
+// Firma tab survive reseeding.
 static async Task CompleteDemoSellerAsync(
     ErpDbContext db,
     Guid tenantId,

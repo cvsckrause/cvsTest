@@ -44,23 +44,22 @@ namespace Erp.Persistence.Migrations
             // The migrator runs with one tenant's app.tenant_id, and forced RLS binds the owner on the
             // joined table too, so both tables lift FORCE for the backfill.
             // Existing lines never recorded their capture order. Lines are insert-only, so physical
-            // order (ctid) is the best remaining hint; it is read before the description update
-            // rewrites the rows.
+            // order (ctid) is the best remaining hint.
             migrationBuilder.Sql("""
                 ALTER TABLE erp."sales_order_lines" NO FORCE ROW LEVEL SECURITY;
                 ALTER TABLE erp."articles" NO FORCE ROW LEVEL SECURITY;
                 UPDATE erp."sales_order_lines" AS line
-                SET "Position" = numbered.position
+                SET "Position" = numbered.position,
+                    "Description" = COALESCE(numbered.article_name, line."Description")
                 FROM (
-                    SELECT ctid AS row_ref,
-                           row_number() OVER (PARTITION BY "SalesOrderId" ORDER BY ctid) AS position
-                    FROM erp."sales_order_lines"
+                    SELECT existing.ctid AS row_ref,
+                           row_number() OVER (PARTITION BY existing."SalesOrderId" ORDER BY existing.ctid) AS position,
+                           article."Name" AS article_name
+                    FROM erp."sales_order_lines" AS existing
+                    LEFT JOIN erp."articles" AS article
+                        ON article."Id" = existing."ArticleId" AND article."TenantId" = existing."TenantId"
                 ) AS numbered
                 WHERE line.ctid = numbered.row_ref;
-                UPDATE erp."sales_order_lines" AS line
-                SET "Description" = article."Name"
-                FROM erp."articles" AS article
-                WHERE article."Id" = line."ArticleId" AND article."TenantId" = line."TenantId";
                 ALTER TABLE erp."articles" FORCE ROW LEVEL SECURITY;
                 ALTER TABLE erp."sales_order_lines" FORCE ROW LEVEL SECURITY;
                 """);

@@ -166,7 +166,7 @@ public sealed class Article : ITenantEntity
         if (string.IsNullOrWhiteSpace(sku)) throw new ArgumentException("SKU is required.", nameof(sku));
         if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("Article name is required.", nameof(name));
         if (salesPrice < 0) throw new ArgumentOutOfRangeException(nameof(salesPrice));
-        RequireDefined(taxCode);
+        TaxCodes.RequireDefined(taxCode, nameof(taxCode));
 
         Id = Guid.NewGuid();
         TenantId = tenantId;
@@ -190,15 +190,10 @@ public sealed class Article : ITenantEntity
     {
         if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("Article name is required.", nameof(name));
         if (salesPrice < 0) throw new ArgumentOutOfRangeException(nameof(salesPrice));
-        RequireDefined(taxCode);
+        TaxCodes.RequireDefined(taxCode, nameof(taxCode));
 
         Name = name.Trim();
         SalesPrice = salesPrice;
         TaxCode = taxCode;
-    }
-
-    private static void RequireDefined(TaxCode taxCode)
-    {
-        if (!Enum.IsDefined(taxCode)) throw new ArgumentException("Tax code must be Standard19, Reduced7, or Zero.", nameof(taxCode));
     }
 }

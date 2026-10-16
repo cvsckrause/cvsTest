@@ -233,7 +233,7 @@ internal static class MasterDataEndpoints
         if (string.IsNullOrWhiteSpace(value)) return TaxCode.Standard19;
         var name = Enum.GetNames<TaxCode>().FirstOrDefault(item => item.Equals(value.Trim(), StringComparison.OrdinalIgnoreCase));
         return name is null
-            ? throw new ArgumentException("Tax code must be Standard19, Reduced7, or Zero.", nameof(value))
+            ? throw new ArgumentException(TaxCodes.InvalidMessage, nameof(value))
             : Enum.Parse<TaxCode>(name);
     }
 

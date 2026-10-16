@@ -154,7 +154,8 @@ if [[ "${approve_status}" != "404" ]]; then
 fi
 echo "Anonymous approval endpoint is reachable through CloudFront."
 
-# Releases need complete seller details. Demo values fill gaps only, so edits made on the cell survive.
+# Invoices will need complete seller details. Demo values are written only while some are missing,
+# so details entered on the cell survive.
 seller="$(request GET /api/v1/mandant/seller)"
 if jq -e '.missingFields | length > 0' <<<"${seller}" >/dev/null; then
   seller="$(request PUT /api/v1/mandant/seller \

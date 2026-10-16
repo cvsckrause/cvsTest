@@ -173,7 +173,7 @@ public sealed class SalesOrderLine : ITenantEntity
         if (articleId == Guid.Empty) throw new ArgumentException("Article is required.", nameof(articleId));
         if (string.IsNullOrWhiteSpace(sku)) throw new ArgumentException("SKU is required.", nameof(sku));
         if (string.IsNullOrWhiteSpace(description)) throw new ArgumentException("Line description is required.", nameof(description));
-        if (!Enum.IsDefined(taxCode)) throw new ArgumentException("Tax code must be Standard19, Reduced7, or Zero.", nameof(taxCode));
+        TaxCodes.RequireDefined(taxCode, nameof(taxCode));
         if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity));
         if (unitPrice < 0) throw new ArgumentOutOfRangeException(nameof(unitPrice));
 

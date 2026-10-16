@@ -26,6 +26,16 @@ public enum TaxCode
     Zero = 2
 }
 
+public static class TaxCodes
+{
+    public const string InvalidMessage = "Tax code must be Standard19, Reduced7, or Zero.";
+
+    public static void RequireDefined(TaxCode taxCode, string parameter)
+    {
+        if (!Enum.IsDefined(taxCode)) throw new ArgumentException(InvalidMessage, parameter);
+    }
+}
+
 public static class Money
 {
     // Commercial rounding: .NET's default MidpointRounding.ToEven would turn 0.125 into 0.12.

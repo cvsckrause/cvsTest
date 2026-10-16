@@ -27,7 +27,7 @@ export function StammWorkspace({ model }: { model: StammModel }) {
     seller,
     sellerForm,
     setSellerForm,
-    sellerMissing,
+    sellerUnavailable,
     saveSeller,
     editArticle,
     editAddress,
@@ -62,7 +62,7 @@ export function StammWorkspace({ model }: { model: StammModel }) {
               <h2>Firmendaten für Rechnungen</h2>
               {seller && <span>Mandant {seller.mandantNumber}</span>}
             </div>
-            {sellerMissing ? (
+            {sellerUnavailable ? (
               <p className="empty-row">Für diesen Mandanten sind keine Firmendaten hinterlegt.</p>
             ) : (
               <form className="master-form" onSubmit={saveSeller}>

@@ -111,7 +111,7 @@ public sealed partial class Mandant
 
         var nextAdditional = Optional(additionalLine, StreetMaxLength, "Additional line", nameof(additionalLine));
         var nextSteuernummer = Optional(steuernummer, SteuernummerMaxLength, "Steuernummer", nameof(steuernummer));
-        var nextUstIdNr = NormalizeUstIdNr(ustIdNr);
+        var nextUstIdNr = NormalizeUstIdNr(ustIdNr, nameof(ustIdNr));
         if (nextSteuernummer is null && nextUstIdNr is null)
         {
             throw new ArgumentException("Steuernummer or USt-IdNr is required.", nameof(steuernummer));
@@ -137,7 +137,7 @@ public sealed partial class Mandant
         return missing;
     }
 
-    private static string? NormalizeUstIdNr(string? value)
+    private static string? NormalizeUstIdNr(string? value, string parameter)
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
         var normalized = string.Concat(value.Where(character => !char.IsWhiteSpace(character))).ToUpperInvariant();
@@ -145,7 +145,7 @@ public sealed partial class Mandant
         {
             throw new ArgumentException(
                 "USt-IdNr must be a 2-letter country prefix followed by 2 to 12 letters or digits.",
-                "ustIdNr");
+                parameter);
         }
 
         return normalized;
@@ -169,19 +169,8 @@ public sealed partial class Mandant
     [GeneratedRegex("^[A-Z]{2}[A-Z0-9]{2,12}$")]
     private static partial Regex UstIdNrPattern();
 
-    public static string RequireFirmenname(string firmenname)
-    {
-        var trimmed = firmenname?.Trim() ?? string.Empty;
-        if (trimmed.Length == 0) throw new ArgumentException("Firmenname is required.", nameof(firmenname));
-        if (trimmed.Length > FirmennameMaxLength)
-        {
-            throw new ArgumentException(
-                $"Firmenname must be at most {FirmennameMaxLength} characters.",
-                nameof(firmenname));
-        }
-
-        return trimmed;
-    }
+    public static string RequireFirmenname(string firmenname) =>
+        Require(firmenname, FirmennameMaxLength, "Firmenname", nameof(firmenname));
 }
 
 public sealed class MandantUser
