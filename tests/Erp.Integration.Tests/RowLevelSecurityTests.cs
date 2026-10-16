@@ -4,12 +4,13 @@ namespace Erp.Integration.Tests;
 public sealed class RowLevelSecurityTests(PostgresFixture fixture)
 {
     [Fact]
-    public async Task Tenant_b_raw_sql_sees_no_tenant_a_rows()
+    public async Task App_role_cannot_run_ddl_or_read_another_tenant()
     {
         var role = await fixture.Probe.CurrentRoleAsync();
         Assert.Equal("erp_app", role.User);
         Assert.False(role.Superuser);
         Assert.False(role.BypassRls);
+        Assert.Equal("42501", await fixture.Probe.CreateTableAsAppAsync());
 
         var leaks = new List<string>();
         var unseeded = new List<string>();
