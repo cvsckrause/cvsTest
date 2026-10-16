@@ -26,6 +26,9 @@ namespace Erp.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.HasSequence("mandant_number_seq")
+                .StartsAt(1001L);
+
             modelBuilder.Entity("Erp.Billing.Domain.Delivery", b =>
                 {
                     b.Property<Guid>("Id")
@@ -424,6 +427,82 @@ namespace Erp.Persistence.Migrations
                     b.ToTable("inbox_messages", "erp");
                 });
 
+            modelBuilder.Entity("Erp.Platform.Domain.Mandant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ActivatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("ApprovalExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ApprovalTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Firmenname")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<long>("Number")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValueSql("nextval('erp.mandant_number_seq')");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApprovalTokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("Number")
+                        .IsUnique();
+
+                    b.ToTable("mandanten", "erp");
+                });
+
+            modelBuilder.Entity("Erp.Platform.Domain.MandantUser", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CognitoSub")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<Guid>("MandantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MandantId", "UserName")
+                        .IsUnique();
+
+                    b.ToTable("mandant_users", "erp");
+                });
+
             modelBuilder.Entity("Erp.Platform.Domain.NumberRange", b =>
                 {
                     b.Property<Guid>("Id")
@@ -655,6 +734,15 @@ namespace Erp.Persistence.Migrations
                     b.HasIndex("TenantId", "SalesOrderId");
 
                     b.ToTable("sales_order_lines", "erp");
+                });
+
+            modelBuilder.Entity("Erp.Platform.Domain.MandantUser", b =>
+                {
+                    b.HasOne("Erp.Platform.Domain.Mandant", null)
+                        .WithMany()
+                        .HasForeignKey("MandantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Erp.Sales.Domain.SalesOrderLine", b =>
