@@ -60,7 +60,7 @@ A database that still has trading tables but no `erp."__EFMigrationsHistory"` ro
 
 The UI is baked into the API image and served from CloudFront (same origin as `/api/v1`). Open `https://<DistributionDomainName>/`. CloudFront redirects HTTP to HTTPS and uses the default `*.cloudfront.net` certificate. `/api/*` is not cached. The ALB stays HTTP and accepts port 80 only from the CloudFront origin-facing prefix list, so a direct request to the ALB from the internet is refused. Local Vite (`npm run dev --prefix src/erp-web`) remains optional for UI-only development and still proxies `/api` via `ERP_API_ORIGIN`.
 
-The shell status bar shows a build stamp (`version · built-at UTC · short git SHA`) so you can tell which image is live without opening ECR or ECS.
+The shell status bar shows a build stamp (`version · dd.MM.yyyy / HH:mm:ss Europe/Berlin · short git SHA`) so you can tell which image is live without opening ECR or ECS.
 
 Smoke against `https://<DistributionDomainName>`:
 
