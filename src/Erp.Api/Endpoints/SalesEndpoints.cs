@@ -87,10 +87,13 @@ internal static class SalesEndpoints
             var idempotencyKey = Idempotency.RequireKey(httpContext);
             if (idempotencyKey is null) return Results.BadRequest(new { error = "Idempotency-Key header is required." });
 
+            var fingerprint = Idempotency.FingerprintOf(request);
+            Idempotency.Stash(httpContext, fingerprint);
             var existing = await db.IdempotencyRecords.AsNoTracking()
                 .SingleOrDefaultAsync(record => record.Operation == Idempotency.CreateSalesOrder && record.Key == idempotencyKey, cancellationToken);
             if (existing is not null)
             {
+                if (Idempotency.Conflicts(existing.Fingerprint, fingerprint)) return Idempotency.Mismatch();
                 return Results.Ok(new { id = existing.ResourceId, replayed = true });
             }
 
@@ -143,7 +146,7 @@ internal static class SalesEndpoints
             }
 
             db.SalesOrders.Add(order);
-            db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, Idempotency.CreateSalesOrder, order.Id, null));
+            db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, Idempotency.CreateSalesOrder, order.Id, fingerprint));
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return Results.Created($"/api/v1/sales-orders/{order.Id}", ToResponse(order));
@@ -203,9 +206,15 @@ internal static class SalesEndpoints
             var idempotencyKey = Idempotency.RequireKey(httpContext);
             if (idempotencyKey is null) return Results.BadRequest(new { error = "Idempotency-Key header is required." });
 
+            var fingerprint = Idempotency.EmptyFingerprint;
+            Idempotency.Stash(httpContext, fingerprint);
             var existing = await db.IdempotencyRecords.AsNoTracking()
                 .SingleOrDefaultAsync(record => record.Operation == Idempotency.ReleaseSalesOrder && record.Key == idempotencyKey, cancellationToken);
-            if (existing is not null) return Results.Ok(new { id = existing.ResourceId, replayed = true });
+            if (existing is not null)
+            {
+                if (Idempotency.Conflicts(existing.Fingerprint, fingerprint)) return Idempotency.Mismatch();
+                return Results.Ok(new { id = existing.ResourceId, replayed = true });
+            }
 
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             if (!await SalesOrderRowLock.TryLockAsync(db, id, cancellationToken))
@@ -267,7 +276,7 @@ internal static class SalesEndpoints
                 order.Id,
                 payload,
                 httpContext.TraceIdentifier));
-            db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, Idempotency.ReleaseSalesOrder, order.Id, null));
+            db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, Idempotency.ReleaseSalesOrder, order.Id, fingerprint));
 
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -284,9 +293,15 @@ internal static class SalesEndpoints
             var idempotencyKey = Idempotency.RequireKey(httpContext);
             if (idempotencyKey is null) return Results.BadRequest(new { error = "Idempotency-Key header is required." });
 
+            var fingerprint = Idempotency.EmptyFingerprint;
+            Idempotency.Stash(httpContext, fingerprint);
             var existing = await db.IdempotencyRecords.AsNoTracking()
                 .SingleOrDefaultAsync(record => record.Operation == Idempotency.CancelSalesOrder && record.Key == idempotencyKey, cancellationToken);
-            if (existing is not null) return Results.Ok(new { id = existing.ResourceId, replayed = true });
+            if (existing is not null)
+            {
+                if (Idempotency.Conflicts(existing.Fingerprint, fingerprint)) return Idempotency.Mismatch();
+                return Results.Ok(new { id = existing.ResourceId, replayed = true });
+            }
 
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             if (!await SalesOrderRowLock.TryLockAsync(db, id, cancellationToken))
@@ -349,7 +364,7 @@ internal static class SalesEndpoints
                 order.Id,
                 payload,
                 httpContext.TraceIdentifier));
-            db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, Idempotency.CancelSalesOrder, order.Id, null));
+            db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, Idempotency.CancelSalesOrder, order.Id, fingerprint));
 
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);

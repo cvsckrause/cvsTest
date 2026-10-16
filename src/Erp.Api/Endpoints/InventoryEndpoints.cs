@@ -63,10 +63,13 @@ internal static class InventoryEndpoints
             if (idempotencyKey is null) return Results.BadRequest(new { error = "Idempotency-Key header is required." });
             if (request.Quantity <= 0) return Results.BadRequest(new { error = "Quantity must be positive." });
 
+            var fingerprint = Idempotency.FingerprintOf(request);
+            Idempotency.Stash(httpContext, fingerprint);
             var existing = await db.IdempotencyRecords.AsNoTracking()
                 .SingleOrDefaultAsync(record => record.Operation == Idempotency.StockGoodsReceipt && record.Key == idempotencyKey, cancellationToken);
             if (existing is not null)
             {
+                if (Idempotency.Conflicts(existing.Fingerprint, fingerprint)) return Idempotency.Mismatch();
                 var prior = await db.StockMovements.AsNoTracking()
                     .SingleOrDefaultAsync(movement => movement.Id == existing.ResourceId, cancellationToken);
                 if (prior is null) return Results.Ok(new { id = existing.ResourceId, replayed = true });
@@ -128,7 +131,7 @@ internal static class InventoryEndpoints
                 movement.Id,
                 auditPayload,
                 httpContext.TraceIdentifier));
-            db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, Idempotency.StockGoodsReceipt, movement.Id, null));
+            db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, Idempotency.StockGoodsReceipt, movement.Id, fingerprint));
 
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);

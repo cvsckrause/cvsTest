@@ -140,6 +140,22 @@ internal sealed class DatabaseProbe(string appConnectionString, string adminConn
             return (int)(await command.ExecuteScalarAsync() ?? 0);
         });
 
+    public Task ClearIdempotencyFingerprintAsync(Guid tenantId, string key) =>
+        WithAppAsync(tenantId, async connection =>
+        {
+            await using var command = new NpgsqlCommand(
+                """
+                update erp.idempotency_records
+                set "Fingerprint" = null
+                where "TenantId" = @tenant and "Key" = @key
+                """,
+                connection);
+            command.Parameters.AddWithValue("tenant", tenantId);
+            command.Parameters.AddWithValue("key", key);
+            await command.ExecuteNonQueryAsync();
+            return 0;
+        });
+
     public Task<int> CountMovementsAsync(Guid tenantId, string reference) =>
         WithAppAsync(tenantId, async connection =>
         {
