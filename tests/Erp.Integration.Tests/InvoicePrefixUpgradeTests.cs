@@ -25,7 +25,7 @@ public sealed class InvoicePrefixUpgradeTests(PostgresFixture fixture)
     [Fact]
     public async Task Upgrade_moves_every_tenants_empty_invoice_prefix_to_r()
     {
-        await using var scratch = await ScratchDatabase.CreateAsync(fixture.AdminConnectionString);
+        await using var scratch = await ScratchDatabase.CreateAsync(fixture.AdminConnectionString, OwnerRole);
         await PrepareNumberRangesSchemaAsync(scratch);
 
         await MigrateAsOwnerAsync(scratch, PrefixMigration);
@@ -46,7 +46,7 @@ public sealed class InvoicePrefixUpgradeTests(PostgresFixture fixture)
     [Fact]
     public async Task Downgrade_restores_the_empty_invoice_prefix_and_keeps_the_counter()
     {
-        await using var scratch = await ScratchDatabase.CreateAsync(fixture.AdminConnectionString);
+        await using var scratch = await ScratchDatabase.CreateAsync(fixture.AdminConnectionString, OwnerRole);
         await PrepareNumberRangesSchemaAsync(scratch);
         await MigrateAsOwnerAsync(scratch, PrefixMigration);
 
@@ -94,9 +94,9 @@ public sealed class InvoicePrefixUpgradeTests(PostgresFixture fixture)
                 when duplicate_object then null;
             end
             $$;
-            grant usage, create on schema erp, public to {OwnerRole};
+            grant usage, create on schema erp to {OwnerRole};
             alter table erp.number_ranges owner to {OwnerRole};
-            alter table public."__EFMigrationsHistory" owner to {OwnerRole};
+            alter table erp."__EFMigrationsHistory" owner to {OwnerRole};
             """,
             connection);
         command.Parameters.AddWithValue("x", TenantX);
@@ -187,48 +187,5 @@ public sealed class InvoicePrefixUpgradeTests(PostgresFixture fixture)
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync()) numbers.Add(reader.GetString(0));
         return numbers.ToArray();
-    }
-
-    private sealed class ScratchDatabase : IAsyncDisposable
-    {
-        private readonly string _serverConnectionString;
-        private readonly string _name;
-
-        private ScratchDatabase(string serverConnectionString, string name)
-        {
-            _serverConnectionString = serverConnectionString;
-            _name = name;
-            AdminConnectionString = new NpgsqlConnectionStringBuilder(serverConnectionString) { Database = name }.ConnectionString;
-            OwnerConnectionString = new NpgsqlConnectionStringBuilder(AdminConnectionString)
-            {
-                Username = OwnerRole,
-                Password = OwnerRole
-            }.ConnectionString;
-        }
-
-        public string AdminConnectionString { get; }
-        public string OwnerConnectionString { get; }
-
-        public static async Task<ScratchDatabase> CreateAsync(string serverConnectionString)
-        {
-            var scratch = new ScratchDatabase(serverConnectionString, "erp_upgrade_" + Guid.NewGuid().ToString("N"));
-            await scratch.ExecuteOnServerAsync($"create database {scratch._name}");
-            return scratch;
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            NpgsqlConnection.ClearPool(new NpgsqlConnection(AdminConnectionString));
-            NpgsqlConnection.ClearPool(new NpgsqlConnection(OwnerConnectionString));
-            await ExecuteOnServerAsync($"drop database if exists {_name} with (force)");
-        }
-
-        private async Task ExecuteOnServerAsync(string sql)
-        {
-            await using var connection = new NpgsqlConnection(_serverConnectionString);
-            await connection.OpenAsync();
-            await using var command = new NpgsqlCommand(sql, connection);
-            await command.ExecuteNonQueryAsync();
-        }
     }
 }
