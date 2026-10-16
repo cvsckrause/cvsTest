@@ -656,3 +656,22 @@ Each phase's pull request runs the full table. The Phase A and Phase B upgrade t
 - Phase B: from this deploy on, releases for a Mandant without complete seller details return 409 (R4), and every release payload carries the seller block.
 - Phase C: before deploying, confirm the outbox holds no unprocessed or dead-lettered released.v1 message from before the Phase B deploy. Process or cancel it first (KTD2).
 - The deploy workflow updates the services first and runs the migrator afterwards. Every phase adds columns that its new code reads, so do not create or release orders in the cell until the workflow's migrator step has exited 0.
+
+---
+
+## Appendix
+
+### Decision Log
+
+Decisions made after the first version of this plan, recorded for review. "Confirmed" means Mark chose it. "Pending review" means an agent chose it while writing requirements, and nobody has confirmed it yet. The governing IDs hold the rule text.
+
+| Date | Decision | Decided by | Status | Governs |
+| --- | --- | --- | --- | --- |
+| 2026-10-16 | Q1 answered: D4's flag is a customer-level, tax-free intra-EU supply (§6a UStG, category K), not domestic §13b reverse charge and not a §13b article code. | Mark | Confirmed | KD1, R17, R18, R21, KTD3, U11, U12 |
+| 2026-10-16 | The line tax code is frozen at order creation, and a saved order shows tax and gross per rate from the same function as its invoice. | Mark | Confirmed | KD7, R2, R19, U13 |
+| 2026-10-16 | Invoices issued before E-2 ships are internal records and are never sent. E-2 sends only invoices it issues itself. | Mark | Confirmed | KD6 |
+| 2026-10-16 | This plan is the single R-16 plan. The separate requirements plan in #112 was closed, and its decisions were moved into this plan. | Mark | Confirmed | — |
+| 2026-10-16 | A flagged order whose ship-to country is `DE` or outside the EU is refused with 400 rather than falling back to German VAT. | Agent | Pending review | R18, AE10 |
+| 2026-10-16 | Releasing a flagged order needs the Mandant's USt-IdNr, and a Steuernummer alone gets 409. §14a Abs. 3 UStG requires the seller's USt-IdNr on intra-EU invoices. | Agent | Pending review | R20, AE10 |
+| 2026-10-16 | No VIES check of USt-IdNrs (format and country prefix only), no Zusammenfassende Meldung, and no proof-of-transport handling. | Agent | Pending review | Scope Boundaries |
+| 2026-10-16 | The order capture draft keeps showing net only. Tax and gross appear once the order is saved. | Agent | Pending review | R19, U13, Scope Boundaries |

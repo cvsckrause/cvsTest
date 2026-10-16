@@ -616,9 +616,11 @@ All six were accepted as recommended on 2026-10-14.
 | D1 | HTTPS for the dev cell: CloudFront in front of the ALB, or a Route 53 domain with ACM on the ALB? | CloudFront: no domain needed, near-zero cost, and matches the target architecture |
 | D2 | Tenant membership source: Cognito custom attribute or a server-side membership table? | Server-side table, as ADR-002 implies; Cognito stays authentication only |
 | D3 | How the worker reads the outbox across tenants under RLS | Dedicated `erp_worker` role with a narrow `SECURITY DEFINER` function `claim_outbox(batch)`; business writes still run under per-tenant `app.tenant_id` |
-| D4 | VAT scope for R-16 (DE only, or also AT/CH, reverse charge, intra-EU) and manual order numbers | DE 19/7/0 % plus reverse-charge flag now; AT/CH rates as data later |
+| D4 | VAT scope for R-16 (DE only, or also AT/CH, reverse charge, intra-EU) and manual order numbers | DE 19/7/0 % plus reverse-charge flag now; AT/CH rates as data later. Refined 2026-10-16: the flag is a customer-level tax-free intra-EU supply (§6a UStG), not §13b reverse charge |
 | D5 | M3 business scope | E-1 plus E-2 in parallel (see Wave 3) |
 | D6 | `initial.sql`: regenerate from EF on each migration, or delete? | Delete; EF migrations are the single source, and `dotnet ef migrations script` produces SQL on demand |
+
+Mark refined D4 on 2026-10-16. The decision log in `docs/plans/2026-10-16-1900-feat-r16-invoice-dach-minimum-plan.md` records that refinement and the R-16 decisions still pending review.
 
 ## Creating the GitHub issues
 
