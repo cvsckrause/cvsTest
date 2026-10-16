@@ -32,6 +32,46 @@ public sealed class MandantTests
     }
 
     [Fact]
+    public void Registered_Mandant_waits_for_approval_and_activates_once()
+    {
+        var now = DateTimeOffset.UnixEpoch;
+        var mandant = Mandant.Register("Nordlicht GmbH", "hash", now.AddDays(7), now);
+
+        Assert.Equal(MandantStatus.Pending, mandant.Status);
+        Assert.Null(mandant.ActivatedAt);
+
+        mandant.Activate(now.AddDays(1));
+        mandant.Activate(now.AddDays(2));
+
+        Assert.Equal(MandantStatus.Active, mandant.Status);
+        Assert.Equal(now.AddDays(1), mandant.ActivatedAt);
+    }
+
+    [Fact]
+    public void Expired_registration_cannot_be_activated()
+    {
+        var now = DateTimeOffset.UnixEpoch;
+        var mandant = Mandant.Register("Nordlicht GmbH", "hash", now.AddDays(7), now);
+
+        Assert.True(mandant.ApprovalExpired(now.AddDays(7)));
+        Assert.Throws<InvalidOperationException>(() => mandant.Activate(now.AddDays(8)));
+    }
+
+    [Theory]
+    [InlineData("not-an-address")]
+    [InlineData("Name <info@example.com>")]
+    public void User_email_must_be_a_plain_address(string email)
+    {
+        Assert.Throws<ArgumentException>(() => MandantUser.Create(Tenant, "kunde", email));
+    }
+
+    [Fact]
+    public void Login_name_combines_Mandant_number_and_user()
+    {
+        Assert.Equal("1001.kunde", MandantUser.Create(Tenant, "kunde", "info@example.com").LoginName(1001));
+    }
+
+    [Fact]
     public void User_names_are_stored_lower_case()
     {
         var user = MandantUser.Create(Tenant, " Kunde ", "info@example.com");

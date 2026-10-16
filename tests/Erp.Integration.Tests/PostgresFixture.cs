@@ -1,3 +1,4 @@
+using Erp.Api.Registration;
 using Erp.BuildingBlocks;
 using Erp.Persistence;
 using Erp.Platform.Domain;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using Testcontainers.PostgreSql;
@@ -35,6 +37,9 @@ public sealed class PostgresFixture : IAsyncLifetime
     public string WorkerConnectionString { get; private set; } = string.Empty;
     internal DatabaseProbe Probe { get; private set; } = null!;
     internal CapturedLogs Logs { get; } = new();
+    internal CapturingMailSender Mail { get; } = new();
+    internal FakeCognitoUserAdmin Cognito { get; } = new();
+    public const string ApproverEmail = "approver@example.test";
 
     public async Task InitializeAsync()
     {
@@ -105,6 +110,9 @@ public sealed class PostgresFixture : IAsyncLifetime
         Environment.SetEnvironmentVariable("DevelopmentIdentity__Enabled", "false");
         Environment.SetEnvironmentVariable("DevelopmentIdentity__TenantId", "");
         Environment.SetEnvironmentVariable("DevelopmentIdentity__UserId", "");
+        Environment.SetEnvironmentVariable("Registration__ApproverEmail", ApproverEmail);
+        Environment.SetEnvironmentVariable("Registration__PublicBaseUrl", "https://erp.example.test/");
+        Environment.SetEnvironmentVariable("Registration__PermitsPerHour", "10000");
 
         return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
@@ -112,6 +120,10 @@ public sealed class PostgresFixture : IAsyncLifetime
             builder.ConfigureLogging(logging => logging.AddProvider(Logs));
             builder.ConfigureTestServices(services =>
             {
+                services.RemoveAll<IMailSender>();
+                services.AddSingleton<IMailSender>(Mail);
+                services.RemoveAll<ICognitoUserAdmin>();
+                services.AddSingleton<ICognitoUserAdmin>(Cognito);
                 services.AddAuthentication()
                     .AddScheme<AuthenticationSchemeOptions, TestTenantHandler>(TestTenantHandler.SchemeName, _ => { });
                 services.PostConfigure<AuthenticationOptions>(options =>
