@@ -19,7 +19,6 @@ test('selects the cognito adapter when auth-config mode is cognito', () => {
     mode: 'cognito',
     authority: 'https://cognito-idp.eu-north-1.amazonaws.com/eu-north-1_example',
     clientId: 'client-123',
-    hostedUiOrigin: 'https://erp-dev.auth.eu-north-1.amazoncognito.com',
   })
   expect(adapter.mode).toBe('cognito')
   expect(
@@ -27,7 +26,7 @@ test('selects the cognito adapter when auth-config mode is cognito', () => {
   ).toBe(true)
 })
 
-test('loadAuthConfig maps a cognito payload from /auth-config.json', async () => {
+test('loadAuthConfig maps a cognito payload from /auth-config.json without a Hosted UI origin', async () => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => ({
@@ -36,7 +35,6 @@ test('loadAuthConfig maps a cognito payload from /auth-config.json', async () =>
         mode: 'cognito',
         authority: 'https://cognito-idp.eu-north-1.amazonaws.com/eu-north-1_example',
         clientId: 'client-123',
-        hostedUiOrigin: 'https://erp-dev.auth.eu-north-1.amazoncognito.com',
       }),
     })),
   )
@@ -45,7 +43,6 @@ test('loadAuthConfig maps a cognito payload from /auth-config.json', async () =>
     mode: 'cognito',
     authority: 'https://cognito-idp.eu-north-1.amazonaws.com/eu-north-1_example',
     clientId: 'client-123',
-    hostedUiOrigin: 'https://erp-dev.auth.eu-north-1.amazoncognito.com',
   })
 })
 

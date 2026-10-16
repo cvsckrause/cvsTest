@@ -38,6 +38,8 @@ const client = JSON.stringify(template.findResources('AWS::Cognito::UserPoolClie
 assert.match(client, /ALLOW_USER_SRP_AUTH/)
 assert.match(client, /ALLOW_ADMIN_USER_PASSWORD_AUTH/)
 assert.match(client, /"ALLOW_USER_PASSWORD_AUTH"/)
+assert.doesNotMatch(client, /CallbackURLs|AllowedOAuthFlows"/)
+assert.equal(Object.keys(template.findResources('AWS::Cognito::UserPoolDomain')).length, 0)
 assert.ok(template.findOutputs('AlbDnsName').AlbDnsName)
 console.log('smoke auth and alb output ok')
 

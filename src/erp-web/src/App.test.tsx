@@ -249,10 +249,11 @@ test('reuses the same Idempotency-Key when a receipt request fails and is retrie
   fireEvent.click(screen.getByTitle('Lager'))
   await screen.findByRole('heading', { name: 'Bestand & Wareneingang' })
 
-  fireEvent.click(screen.getByRole('button', { name: 'Wareneingang buchen' }))
+  // While the workspace loads, the submit button reads "Bucht …".
+  fireEvent.click(await screen.findByRole('button', { name: 'Wareneingang buchen' }))
   expect((await screen.findAllByText('temporary failure')).length).toBeGreaterThan(0)
 
-  fireEvent.click(screen.getByRole('button', { name: 'Wareneingang buchen' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Wareneingang buchen' }))
   expect((await screen.findAllByText(/Wareneingang 1 × BIKE-001 gebucht/)).length).toBeGreaterThan(0)
 
   const receiptCalls = fetchMock.mock.calls.filter(([requestUrl]) => String(requestUrl).includes('/stock/receipts'))
@@ -293,11 +294,11 @@ test('does not mint a new Idempotency-Key when stock refresh fails after a succe
   fireEvent.click(screen.getByTitle('Lager'))
   await screen.findByRole('heading', { name: 'Bestand & Wareneingang' })
 
-  fireEvent.click(screen.getByRole('button', { name: 'Wareneingang buchen' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Wareneingang buchen' }))
   expect((await screen.findAllByText(/Wareneingang 1 × BIKE-001 gebucht/)).length).toBeGreaterThan(0)
   expect(screen.getAllByText(/Anzeige konnte nicht aktualisiert werden/).length).toBeGreaterThan(0)
 
-  fireEvent.click(screen.getByRole('button', { name: 'Wareneingang buchen' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Wareneingang buchen' }))
   await screen.findAllByText(/Wareneingang 1 × BIKE-001 gebucht/)
 
   const receiptCalls = fetchMock.mock.calls.filter(([requestUrl]) => String(requestUrl).includes('/stock/receipts'))
@@ -441,7 +442,7 @@ async function bootCognito(
     setTenantId: (next) => {
       tenantId = next
     },
-    login: async () => undefined,
+    login: async () => authSession,
     logout: async () => undefined,
     needsLogin: () => false,
   }
@@ -450,7 +451,6 @@ async function bootCognito(
       mode: 'cognito',
       authority: 'https://auth.example.test',
       clientId: 'client',
-      hostedUiOrigin: 'https://auth.example.test',
     }),
     () => adapter,
   )

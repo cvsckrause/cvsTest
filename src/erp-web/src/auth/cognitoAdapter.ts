@@ -1,73 +1,61 @@
-import { createCodeChallenge, createCodeVerifier, createOAuthState } from './pkce'
-import type { AuthAdapter, AuthConfig, AuthSession, AuthTokens } from './types'
+import type { AuthAdapter, AuthConfig, AuthSession, AuthTokens, LoginCredentials } from './types'
 
-const PKCE_STORAGE_KEY = 'erp.auth.pkce'
 const REFRESH_SKEW_MS = 60_000
-
-type PkcePending = {
-  verifier: string
-  state: string
-  redirectUri: string
-}
+export const LOGIN_FAILED = 'Anmeldung fehlgeschlagen.'
 
 type CognitoConfig = Extract<AuthConfig, { mode: 'cognito' }>
 
-function redirectUri(): string {
-  return `${window.location.origin}/`
+type AuthenticationResult = {
+  AccessToken: string
+  IdToken?: string
+  RefreshToken?: string
+  ExpiresIn: number
 }
 
-function readPending(): PkcePending | null {
-  const raw = sessionStorage.getItem(PKCE_STORAGE_KEY)
-  if (!raw) return null
-  try {
-    return JSON.parse(raw) as PkcePending
-  } catch {
-    return null
-  }
+/** Registered logins are "{Mandantennummer}.{User}"; Cognito usernames are case-insensitive. */
+export function cognitoUsername(credentials: LoginCredentials): string {
+  return `${credentials.mandantennummer.trim()}.${credentials.user.trim().toLowerCase()}`
 }
 
-function clearPending() {
-  sessionStorage.removeItem(PKCE_STORAGE_KEY)
+/** The authority is https://cognito-idp.{region}.amazonaws.com/{poolId}; the API lives at its origin. */
+function identityProviderEndpoint(config: CognitoConfig): string {
+  return `${new URL(config.authority).origin}/`
 }
 
-function parseCallback(search: string): { code: string; state: string } | null {
-  const params = new URLSearchParams(search)
-  const code = params.get('code')
-  const state = params.get('state')
-  if (!code || !state) return null
-  return { code, state }
-}
-
-function clearCallbackFromUrl() {
-  const url = new URL(window.location.href)
-  if (!url.searchParams.has('code') && !url.searchParams.has('state')) return
-  url.search = ''
-  window.history.replaceState({}, document.title, url.pathname + url.hash)
-}
-
-async function exchangeToken(
-  config: CognitoConfig,
-  body: URLSearchParams,
-): Promise<AuthTokens> {
-  const response = await fetch(`${config.hostedUiOrigin}/oauth2/token`, {
+async function callCognito<T>(config: CognitoConfig, action: string, body: unknown): Promise<T> {
+  const response = await fetch(identityProviderEndpoint(config), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body,
+    headers: {
+      'Content-Type': 'application/x-amz-json-1.1',
+      'X-Amz-Target': `AWSCognitoIdentityProviderService.${action}`,
+    },
+    body: JSON.stringify(body),
   })
   if (!response.ok) {
-    throw new Error(`Token-Austausch fehlgeschlagen (${response.status}).`)
+    throw new Error(`Cognito ${action} failed (${response.status}).`)
   }
-  const payload = (await response.json()) as {
-    access_token: string
-    id_token?: string
-    refresh_token?: string
-    expires_in: number
+  return (await response.json()) as T
+}
+
+async function initiateAuth(
+  config: CognitoConfig,
+  authFlow: 'USER_PASSWORD_AUTH' | 'REFRESH_TOKEN_AUTH',
+  parameters: Record<string, string>,
+): Promise<AuthTokens> {
+  const payload = await callCognito<{ AuthenticationResult?: AuthenticationResult; ChallengeName?: string }>(
+    config,
+    'InitiateAuth',
+    { AuthFlow: authFlow, ClientId: config.clientId, AuthParameters: parameters },
+  )
+  const result = payload.AuthenticationResult
+  if (!result?.AccessToken) {
+    throw new Error(`Cognito answered with challenge ${payload.ChallengeName ?? 'none'}.`)
   }
   return {
-    accessToken: payload.access_token,
-    idToken: payload.id_token,
-    refreshToken: payload.refresh_token,
-    expiresAt: Date.now() + payload.expires_in * 1000,
+    accessToken: result.AccessToken,
+    idToken: result.IdToken,
+    refreshToken: result.RefreshToken,
+    expiresAt: Date.now() + result.ExpiresIn * 1000,
   }
 }
 
@@ -86,23 +74,14 @@ export function createCognitoAdapter(config: CognitoConfig): AuthAdapter {
   }
 
   async function refreshAccessToken(): Promise<string | null> {
-    if (!tokens?.refreshToken) {
+    const refreshToken = tokens?.refreshToken
+    if (!refreshToken) {
       tokens = null
       return null
     }
     try {
-      const next = await exchangeToken(
-        config,
-        new URLSearchParams({
-          grant_type: 'refresh_token',
-          client_id: config.clientId,
-          refresh_token: tokens.refreshToken,
-        }),
-      )
-      tokens = {
-        ...next,
-        refreshToken: next.refreshToken ?? tokens.refreshToken,
-      }
+      const next = await initiateAuth(config, 'REFRESH_TOKEN_AUTH', { REFRESH_TOKEN: refreshToken })
+      tokens = { ...next, refreshToken: next.refreshToken ?? refreshToken }
       return tokens.accessToken
     } catch {
       tokens = null
@@ -113,29 +92,6 @@ export function createCognitoAdapter(config: CognitoConfig): AuthAdapter {
   return {
     mode: 'cognito',
     async ensureSession() {
-      if (tokens?.accessToken) {
-        return sessionFromTokens()
-      }
-
-      const callback = parseCallback(window.location.search)
-      if (callback) {
-        const pending = readPending()
-        clearPending()
-        clearCallbackFromUrl()
-        if (!pending || pending.state !== callback.state) {
-          throw new Error('OAuth-State ist ungültig. Bitte erneut anmelden.')
-        }
-        tokens = await exchangeToken(
-          config,
-          new URLSearchParams({
-            grant_type: 'authorization_code',
-            client_id: config.clientId,
-            code: callback.code,
-            code_verifier: pending.verifier,
-            redirect_uri: pending.redirectUri,
-          }),
-        )
-      }
       return sessionFromTokens()
     },
     async getAccessToken() {
@@ -156,33 +112,31 @@ export function createCognitoAdapter(config: CognitoConfig): AuthAdapter {
     setTenantId(next) {
       tenantId = next
     },
-    async login() {
-      const verifier = createCodeVerifier()
-      const challenge = await createCodeChallenge(verifier)
-      const state = createOAuthState()
-      const redirect = redirectUri()
-      sessionStorage.setItem(
-        PKCE_STORAGE_KEY,
-        JSON.stringify({ verifier, state, redirectUri: redirect } satisfies PkcePending),
-      )
-      const url = new URL(`${config.hostedUiOrigin}/oauth2/authorize`)
-      url.searchParams.set('response_type', 'code')
-      url.searchParams.set('client_id', config.clientId)
-      url.searchParams.set('redirect_uri', redirect)
-      url.searchParams.set('scope', 'openid email profile')
-      url.searchParams.set('state', state)
-      url.searchParams.set('code_challenge_method', 'S256')
-      url.searchParams.set('code_challenge', challenge)
-      window.location.assign(url.toString())
+    async login(credentials) {
+      if (!credentials.mandantennummer.trim() || !credentials.user.trim() || !credentials.password) {
+        throw new Error(LOGIN_FAILED)
+      }
+      try {
+        tokens = await initiateAuth(config, 'USER_PASSWORD_AUTH', {
+          USERNAME: cognitoUsername(credentials),
+          PASSWORD: credentials.password,
+        })
+      } catch {
+        tokens = null
+        throw new Error(LOGIN_FAILED)
+      }
+      return sessionFromTokens()
     },
     async logout() {
+      const refreshToken = tokens?.refreshToken
       tokens = null
       tenantId = null
-      clearPending()
-      const url = new URL(`${config.hostedUiOrigin}/logout`)
-      url.searchParams.set('client_id', config.clientId)
-      url.searchParams.set('logout_uri', redirectUri())
-      window.location.assign(url.toString())
+      if (refreshToken) {
+        await callCognito(config, 'RevokeToken', { ClientId: config.clientId, Token: refreshToken }).catch(
+          () => undefined,
+        )
+      }
+      window.location.assign('/')
     },
     needsLogin(session) {
       return !session.authenticated
