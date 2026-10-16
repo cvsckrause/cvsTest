@@ -487,6 +487,36 @@ test('switches Mandant, drops the open document, and reloads customers', async (
   expect(window.location.href).toBe(`${window.location.origin}/sales`)
 })
 
+test('does not reopen the previous Mandant Stamm document after a switch', async () => {
+  const fetchMock = await bootCognito(tenantA, [
+    { tenantId: tenantA, isDefault: true },
+    { tenantId: tenantB, isDefault: false },
+  ])
+
+  render(<AuthGate><App /></AuthGate>)
+  await screen.findByRole('heading', { name: 'Auftragsliste' })
+  fireEvent.click(screen.getByTitle('Stammdaten'))
+  await screen.findByRole('heading', { name: 'Artikel anlegen' })
+  fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten' }))
+  expect(await screen.findByRole('heading', { name: 'Artikel bearbeiten' })).toBeInTheDocument()
+  expect(window.location.pathname).toBe('/stamm/articles/article-1')
+
+  fireEvent.click(screen.getByTitle('Vertrieb'))
+  expect(await screen.findByRole('heading', { name: 'Auftragsliste' })).toBeInTheDocument()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Mandant wechseln' }), { target: { value: tenantB } })
+  await waitFor(() => {
+    expect(window.location.pathname).toBe('/sales')
+  })
+
+  fireEvent.click(screen.getByTitle('Stammdaten'))
+  expect(await screen.findByRole('heading', { name: 'Artikel & Adressen' })).toBeInTheDocument()
+  expect(window.location.pathname).toBe('/stamm/articles')
+  const articleReads = fetchMock.mock.calls.filter(([requestUrl, requestInit]) =>
+    String(requestUrl).includes('/articles/article-1')
+    && new Headers(requestInit?.headers).get('X-Tenant-Id') === tenantB)
+  expect(articleReads).toHaveLength(0)
+})
+
 test('puts the open article into the URL', async () => {
   render(<App />)
   fireEvent.click(screen.getByTitle('Stammdaten'))

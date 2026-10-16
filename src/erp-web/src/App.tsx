@@ -23,9 +23,11 @@ function withoutDocument(route: AppRoute): AppRoute {
 function TenantStatus({
   route,
   navigate,
+  clearStammDocument,
 }: {
   route: AppRoute
   navigate: (next: AppRoute, mode?: 'push' | 'replace') => void
+  clearStammDocument: () => void
 }) {
   const shell = useShellAuth()
 
@@ -33,6 +35,7 @@ function TenantStatus({
     if (shell === null || tenantId === shell.tenantId) return
     shell.switchTenant(tenantId)
     navigate(withoutDocument(route), 'replace')
+    clearStammDocument()
   }
 
   if (shell === null) return <span>Mandant 100 · Hauptlager MAIN</span>
@@ -54,7 +57,7 @@ function TenantStatus({
 }
 
 function App() {
-  const { route, navigate, lastStamm } = useRoute()
+  const { route, navigate, lastStamm, clearStammDocument } = useRoute()
   const shell = useShellAuth()
 
   return (
@@ -63,6 +66,7 @@ function App() {
       route={route}
       navigate={navigate}
       lastStamm={lastStamm}
+      clearStammDocument={clearStammDocument}
     />
   )
 }
@@ -71,10 +75,12 @@ function Workspace({
   route,
   navigate,
   lastStamm,
+  clearStammDocument,
 }: {
   route: AppRoute
   navigate: (next: AppRoute, mode?: 'push' | 'replace') => void
   lastStamm: Extract<AppRoute, { workspace: 'stamm' }>
+  clearStammDocument: () => void
 }) {
   const [notice, setNotice] = useState('Stammdaten werden geladen …')
   const [busy, setBusy] = useState(false)
@@ -160,7 +166,7 @@ function Workspace({
         <footer className="statusbar" aria-live="polite">
           <span>{notice}</span>
           <span className="statusbar-meta">
-            <TenantStatus route={route} navigate={navigate} />
+            <TenantStatus route={route} navigate={navigate} clearStammDocument={clearStammDocument} />
             <span className="build-stamp" title="Build identity" aria-label={`Build ${buildInfo.label}`}>
               {buildInfo.label}
             </span>
