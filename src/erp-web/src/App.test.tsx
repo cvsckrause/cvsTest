@@ -97,7 +97,7 @@ const delivery = {
 const invoice = {
   id: 'invoice-1',
   salesOrderId: 'order-1',
-  number: 'INV-SO-1001',
+  number: 'R-1',
   netAmount: 799,
   createdAt: '2026-10-15T10:01:00.000Z',
 }
@@ -171,7 +171,8 @@ test('opens an order from the list and shows delivery and invoice numbers', asyn
   fireEvent.click(await screen.findByRole('button', { name: 'Öffnen' }))
   expect(await screen.findByRole('heading', { name: 'SO-1001' })).toBeInTheDocument()
   expect(await screen.findByText('DEL-SO-1001')).toBeInTheDocument()
-  expect(screen.getByText('INV-SO-1001')).toBeInTheDocument()
+  expect(screen.getByText('R-1')).toBeInTheDocument()
+  expect(screen.getByText('Lieferung DEL-SO-1001, Rechnung R-1.')).toBeInTheDocument()
   expect(window.location.pathname).toBe('/sales/order-1')
 })
 
