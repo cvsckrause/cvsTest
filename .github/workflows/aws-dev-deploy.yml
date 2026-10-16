@@ -1,0 +1,69 @@
+name: AWS dev cell deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: aws-dev-cell
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-north-1
+  AWS_ACCOUNT_ID: "098981324459"
+  STACK_NAME: Erp-dev
+
+jobs:
+  deploy:
+    name: Build, deploy, migrate, smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: aws-dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::098981324459:role/erp-dev-github-deploy
+          aws-region: eu-north-1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+
+      - name: Install CDK dependencies
+        working-directory: infra
+        run: npm ci
+
+      - name: Ensure ECR repositories
+        run: bash infra/scripts/ensure-ecr-repos.sh
+
+      - name: Build and push images by digest
+        env:
+          IMAGE_TAG: git-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+        run: bash infra/scripts/build-and-push-images.sh
+
+      - name: Bootstrap CDK
+        working-directory: infra
+        run: npx cdk bootstrap "aws://${AWS_ACCOUNT_ID}/${AWS_REGION}"
+
+      - name: Deploy
+        working-directory: infra
+        run: |
+          npx cdk deploy "${STACK_NAME}" --require-approval never \
+            --context "apiImageDigest=${API_IMAGE_DIGEST}" \
+            --context "workerImageDigest=${WORKER_IMAGE_DIGEST}" \
+            --context "migratorImageDigest=${MIGRATOR_IMAGE_DIGEST}"
+
+      - name: Run migrator
+        run: bash infra/scripts/run-migrator.sh
+
+      - name: Smoke test
+        run: bash infra/scripts/smoke-dev-cell.sh
