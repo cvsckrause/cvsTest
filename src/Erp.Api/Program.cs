@@ -168,6 +168,14 @@ app.Use(async (context, next) =>
         memberships = await membershipDirectory.ListAsync(userId, context.RequestAborted);
     }
 
+    if (HttpMethods.IsGet(context.Request.Method)
+        && context.Request.Path.Equals("/api/v1/me/memberships", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Items[RequestLog.UserId] = userId;
+        await next();
+        return;
+    }
+
     var choice = TenantMembershipSelection.Choose(
         context.Request.Headers[TenantMembershipSelection.TenantHeader].FirstOrDefault(),
         memberships);
@@ -220,6 +228,7 @@ if (authenticationEnabled)
 api.MapMasterDataEndpoints();
 api.MapInventoryEndpoints();
 api.MapSalesEndpoints();
+api.MapMembershipEndpoints();
 
 app.MapFallbackToFile("index.html");
 app.Run();
