@@ -15,17 +15,12 @@ namespace Erp.Persistence.Migrations
                 """
                 DO $$
                 BEGIN
-                    CREATE ROLE erp_outbox_definer NOLOGIN BYPASSRLS;
-                EXCEPTION
-                    WHEN duplicate_object THEN NULL;
-                END
-                $$;
-
-                DO $$
-                BEGIN
-                    CREATE ROLE erp_worker NOLOGIN NOSUPERUSER NOBYPASSRLS;
-                EXCEPTION
-                    WHEN duplicate_object THEN NULL;
+                    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'erp_outbox_definer') THEN
+                        CREATE ROLE erp_outbox_definer NOLOGIN BYPASSRLS;
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'erp_worker') THEN
+                        CREATE ROLE erp_worker NOLOGIN NOSUPERUSER NOBYPASSRLS;
+                    END IF;
                 END
                 $$;
                 """,
