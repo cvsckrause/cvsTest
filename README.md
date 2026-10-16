@@ -63,10 +63,10 @@ GitHub Actions workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) r
 
 See [`docs/operations/aws-dev-cell.md`](docs/operations/aws-dev-cell.md).
 
-Once, before the first deploy, from a shell that already has admin credentials for account `098981324459` and a logged-in `gh`:
+Once, before the first deploy, from PowerShell in the repository root, with AWS credentials for account `098981324459` and a logged-in `gh`:
 
 ```powershell
-./infra/scripts/bootstrap-github-oidc.ps1
+.\infra\scripts\bootstrap-github-deploy.ps1
 ```
 
-That creates the GitHub OIDC provider, the role `erp-dev-github-deploy`, and the GitHub environment `aws-dev` with a required reviewer. There are no static access keys. Approving `aws-dev` is the cost gate for **AWS dev cell deploy** and **AWS dev cell destroy**. Do not start either workflow until this script has been run.
+That creates the IAM user `erp-dev-github-deploy`, stores its access key as secrets of the GitHub environment `aws-dev`, and makes you the required reviewer of that environment. The organization SCP blocks GitHub OIDC in this account, which is why the workflows use a key. Approving `aws-dev` is the cost gate for **AWS dev cell deploy** and **AWS dev cell destroy**. Do not start either workflow until this script has been run.
