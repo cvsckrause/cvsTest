@@ -44,6 +44,27 @@ internal sealed class DatabaseProbe(string appConnectionString, string adminConn
         });
     }
 
+    public async Task<string> CreateTableAsAppAsync()
+    {
+        await using var connection = new NpgsqlConnection(appConnectionString);
+        await connection.OpenAsync();
+        try
+        {
+            await using var command = new NpgsqlCommand("create table erp.r17_ddl_probe (id integer)", connection);
+            await command.ExecuteNonQueryAsync();
+        }
+        catch (PostgresException exception)
+        {
+            return exception.SqlState;
+        }
+
+        await using var admin = new NpgsqlConnection(adminConnectionString);
+        await admin.OpenAsync();
+        await using var drop = new NpgsqlCommand("drop table if exists erp.r17_ddl_probe", admin);
+        await drop.ExecuteNonQueryAsync();
+        return "ok";
+    }
+
     public async Task<(bool Enabled, bool Forced, bool Policy)> IsolationAsync(TenantTable table)
     {
         await using var connection = new NpgsqlConnection(appConnectionString);

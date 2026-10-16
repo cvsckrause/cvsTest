@@ -35,6 +35,8 @@ public sealed class TenantConnectionInterceptor(ITenantContext tenantContext) : 
         }
 
         var command = connection.CreateCommand();
+        // Session-scoped. This runs before a transaction exists, so SET LOCAL would not stick.
+        // Npgsql clears the GUC with DISCARD ALL when the connection returns to the pool. See ADR-002.
         command.CommandText = "select set_config('app.tenant_id', @tenant_id, false)";
         var parameter = command.CreateParameter();
         parameter.ParameterName = "tenant_id";

@@ -6,25 +6,17 @@ using Erp.Platform.Domain;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
+var seedDemo = args is ["--seed-demo"];
+if (args.Length > 0 && !seedDemo)
+{
+    throw new InvalidOperationException("Supported arguments: --seed-demo");
+}
+
 var tenantId = Guid.TryParse(Environment.GetEnvironmentVariable("Worker__TenantId"), out var configuredTenant)
     ? configuredTenant
     : Guid.Parse("11111111-1111-1111-1111-111111111111");
 var tenant = new TenantContext(tenantId, "erp-migrator");
-var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Erp");
-
-if (string.IsNullOrWhiteSpace(connectionString))
-{
-    connectionString = new NpgsqlConnectionStringBuilder
-    {
-        Host = Require("Database__Host"),
-        Database = Environment.GetEnvironmentVariable("Database__Name") ?? "erp_dev",
-        Username = Require("Database__Username"),
-        Password = Require("Database__Password"),
-        SslMode = SslMode.Require
-    }.ConnectionString;
-}
-
-await BaselineExistingSchemaAsync(connectionString);
+var connectionString = await ResolveConnectionStringAsync();
 
 var options = new DbContextOptionsBuilder<ErpDbContext>()
     .UseNpgsql(connectionString)
@@ -32,6 +24,13 @@ var options = new DbContextOptionsBuilder<ErpDbContext>()
     .Options;
 await using var db = new ErpDbContext(options, tenant);
 await db.Database.MigrateAsync();
+await RevokeDefinerMembershipAsync();
+
+if (!seedDemo)
+{
+    Console.WriteLine("Database migrated.");
+    return;
+}
 
 Customer? customer = null;
 if (!await db.Customers.AnyAsync())
@@ -68,6 +67,152 @@ await SeedMembershipsAsync(db, tenantId);
 await db.SaveChangesAsync();
 Console.WriteLine("Database migrated and development tenant seeded.");
 
+static async Task<string> ResolveConnectionStringAsync()
+{
+    var configured = Environment.GetEnvironmentVariable("ConnectionStrings__Erp");
+    var adminPassword = Environment.GetEnvironmentVariable("Database__AdminPassword");
+    if (string.IsNullOrWhiteSpace(adminPassword))
+    {
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            return configured;
+        }
+
+        return BuildConnectionString(
+            Require("Database__Username"),
+            Require("Database__Password"));
+    }
+
+    var ownerPassword = Require("Database__Password");
+    var adminConnectionString = BuildConnectionString(
+        Environment.GetEnvironmentVariable("Database__AdminUsername") ?? "erp",
+        adminPassword);
+    await EnsureApplicationRolesAsync(
+        adminConnectionString,
+        ownerPassword,
+        Require("Database__AppPassword"),
+        Require("Database__WorkerPassword"));
+
+    return BuildConnectionString(
+        Environment.GetEnvironmentVariable("Database__Username") ?? "erp_owner",
+        ownerPassword);
+}
+
+static string BuildConnectionString(string username, string password) =>
+    new NpgsqlConnectionStringBuilder
+    {
+        Host = Require("Database__Host"),
+        Database = Environment.GetEnvironmentVariable("Database__Name") ?? "erp_dev",
+        Username = username,
+        Password = password,
+        SslMode = SslMode.Require
+    }.ConnectionString;
+
+static async Task EnsureApplicationRolesAsync(
+    string adminConnectionString,
+    string ownerPassword,
+    string appPassword,
+    string workerPassword)
+{
+    await using var connection = new NpgsqlConnection(adminConnectionString);
+    await connection.OpenAsync();
+
+    // Each statement is its own auto-commit command. CREATE ROLE cannot run inside a transaction.
+    await ExecuteAsync(connection, """
+        DO $roles$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'erp_outbox_definer') THEN
+                CREATE ROLE erp_outbox_definer NOLOGIN BYPASSRLS;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'erp_owner') THEN
+                CREATE ROLE erp_owner NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'erp_app') THEN
+                CREATE ROLE erp_app NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'erp_worker') THEN
+                CREATE ROLE erp_worker NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+            END IF;
+        END
+        $roles$;
+        """);
+
+    await ExecuteAsync(connection, $"""
+        ALTER ROLE erp_owner WITH LOGIN PASSWORD {QuoteLiteral(ownerPassword)} NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+        """);
+    await ExecuteAsync(connection, $"""
+        ALTER ROLE erp_app WITH LOGIN PASSWORD {QuoteLiteral(appPassword)} NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+        """);
+    await ExecuteAsync(connection, $"""
+        ALTER ROLE erp_worker WITH LOGIN PASSWORD {QuoteLiteral(workerPassword)} NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+        """);
+
+    await ExecuteAsync(connection, """
+        GRANT erp_owner TO CURRENT_USER;
+        GRANT erp_outbox_definer TO erp_owner;
+        GRANT erp_worker TO erp_owner WITH ADMIN OPTION;
+        """);
+
+    await ExecuteAsync(connection, """
+        DO $db$
+        BEGIN
+            EXECUTE format('GRANT CONNECT, CREATE ON DATABASE %I TO erp_owner', current_database());
+            EXECUTE format('GRANT CONNECT ON DATABASE %I TO erp_app, erp_worker', current_database());
+        END
+        $db$;
+        """);
+
+    await ExecuteAsync(connection, """
+        DO $own$
+        DECLARE
+            obj record;
+        BEGIN
+            IF to_regnamespace('erp') IS NULL THEN
+                RETURN;
+            END IF;
+
+            EXECUTE 'ALTER SCHEMA erp OWNER TO erp_owner';
+
+            FOR obj IN
+                SELECT c.relname, c.relkind
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                JOIN pg_roles owner_role ON owner_role.oid = c.relowner
+                WHERE n.nspname = 'erp'
+                  AND c.relkind IN ('r', 'p', 'S', 'v', 'm')
+                  AND owner_role.rolname <> 'erp_outbox_definer'
+            LOOP
+                IF obj.relkind = 'S' THEN
+                    EXECUTE format('ALTER SEQUENCE erp.%I OWNER TO erp_owner', obj.relname);
+                ELSIF obj.relkind = 'm' THEN
+                    EXECUTE format('ALTER MATERIALIZED VIEW erp.%I OWNER TO erp_owner', obj.relname);
+                ELSIF obj.relkind = 'v' THEN
+                    EXECUTE format('ALTER VIEW erp.%I OWNER TO erp_owner', obj.relname);
+                ELSE
+                    EXECUTE format('ALTER TABLE erp.%I OWNER TO erp_owner', obj.relname);
+                END IF;
+            END LOOP;
+        END
+        $own$;
+        """);
+}
+
+static async Task RevokeDefinerMembershipAsync()
+{
+    var adminPassword = Environment.GetEnvironmentVariable("Database__AdminPassword");
+    if (string.IsNullOrWhiteSpace(adminPassword))
+    {
+        return;
+    }
+
+    var adminConnectionString = BuildConnectionString(
+        Environment.GetEnvironmentVariable("Database__AdminUsername") ?? "erp",
+        adminPassword);
+    await using var connection = new NpgsqlConnection(adminConnectionString);
+    await connection.OpenAsync();
+    await ExecuteAsync(connection, "REVOKE erp_outbox_definer FROM erp_owner;");
+}
+
 static async Task SeedMembershipsAsync(ErpDbContext db, Guid tenantId)
 {
     var seed = Environment.GetEnvironmentVariable("Authentication__SeedMemberships");
@@ -88,55 +233,14 @@ static async Task SeedMembershipsAsync(ErpDbContext db, Guid tenantId)
     }
 }
 
+static async Task ExecuteAsync(NpgsqlConnection connection, string sql)
+{
+    await using var command = new NpgsqlCommand(sql, connection);
+    await command.ExecuteNonQueryAsync();
+}
+
+static string QuoteLiteral(string value) => "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'";
+
 static string Require(string name) =>
     Environment.GetEnvironmentVariable(name)
     ?? throw new InvalidOperationException($"{name} is required.");
-
-static async Task BaselineExistingSchemaAsync(string connectionString)
-{
-    // The AWS cell was first created with tables already present while the EF history
-    // table lived in public. With HasDefaultSchema("erp"), MigrateAsync looks in erp
-    // and would try to recreate InitialTradingSchema. Seed the history row when the
-    // base tables already exist so later migrations can apply cleanly.
-    await using var connection = new NpgsqlConnection(connectionString);
-    await connection.OpenAsync();
-    await using var command = connection.CreateCommand();
-    command.CommandText = """
-        CREATE SCHEMA IF NOT EXISTS erp;
-
-        CREATE TABLE IF NOT EXISTS erp."__EFMigrationsHistory" (
-            "MigrationId" character varying(150) NOT NULL,
-            "ProductVersion" character varying(32) NOT NULL,
-            CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY ("MigrationId")
-        );
-
-        INSERT INTO erp."__EFMigrationsHistory" ("MigrationId", "ProductVersion")
-        SELECT '20261013130016_InitialTradingSchema', '10.0.4'
-        WHERE EXISTS (
-            SELECT 1
-            FROM information_schema.tables
-            WHERE table_schema = 'erp' AND table_name = 'articles'
-        )
-        AND NOT EXISTS (
-            SELECT 1
-            FROM erp."__EFMigrationsHistory"
-            WHERE "MigrationId" = '20261013130016_InitialTradingSchema'
-        );
-
-        DO $sync$
-        BEGIN
-            IF to_regclass('public."__EFMigrationsHistory"') IS NOT NULL THEN
-                INSERT INTO erp."__EFMigrationsHistory" ("MigrationId", "ProductVersion")
-                SELECT h."MigrationId", h."ProductVersion"
-                FROM public."__EFMigrationsHistory" h
-                WHERE NOT EXISTS (
-                    SELECT 1
-                    FROM erp."__EFMigrationsHistory" e
-                    WHERE e."MigrationId" = h."MigrationId"
-                );
-            END IF;
-        END
-        $sync$;
-        """;
-    await command.ExecuteNonQueryAsync();
-}

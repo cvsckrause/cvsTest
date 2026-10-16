@@ -172,10 +172,24 @@ export class ErpDevStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     })
 
+    const roleSecret = (id: string, username: string) =>
+      new secretsmanager.Secret(this, id, {
+        generateSecretString: {
+          secretStringTemplate: JSON.stringify({ username }),
+          generateStringKey: 'password',
+          excludePunctuation: true,
+          passwordLength: 32,
+        },
+        encryptionKey: key,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      })
+    const ownerSecret = roleSecret('ErpOwnerSecret', 'erp_owner')
+    const appSecret = roleSecret('ErpAppSecret', 'erp_app')
+    const workerSecret = roleSecret('ErpWorkerSecret', 'erp_worker')
+
     const databaseEnv = {
       Database__Host: database.instanceEndpoint.hostname,
       Database__Name: 'erp_dev',
-      Database__Username: 'erp',
       Worker__TenantId: '11111111-1111-1111-1111-111111111111',
     }
 
@@ -192,13 +206,14 @@ export class ErpDevStack extends cdk.Stack {
       logging: ecs.LogDrivers.awsLogs({ logGroup, streamPrefix: 'api' }),
       environment: {
         ...databaseEnv,
+        Database__Username: 'erp_app',
         Authentication__Authority: `https://cognito-idp.${this.region}.amazonaws.com/${userPool.userPoolId}`,
         Authentication__ClientId: userPoolClient.userPoolClientId,
         // domainName is the Cognito prefix only; Hosted UI host is prefix.auth.<region>.amazoncognito.com
         Authentication__HostedUiDomain: `${userPoolDomain.domainName}.auth.${this.region}.amazoncognito.com`,
       },
       secrets: {
-        Database__Password: ecs.Secret.fromSecretsManager(databaseSecret, 'password'),
+        Database__Password: ecs.Secret.fromSecretsManager(appSecret, 'password'),
       },
       portMappings: [{ containerPort: 8080 }],
     })
@@ -221,12 +236,13 @@ export class ErpDevStack extends cdk.Stack {
       logging: ecs.LogDrivers.awsLogs({ logGroup, streamPrefix: 'worker' }),
       environment: {
         ...databaseEnv,
+        Database__Username: 'erp_worker',
         WorkerQueueUrl: workerQueue.queueUrl,
         EventBusName: eventBus.eventBusName,
         DocumentsBucket: documents.bucketName,
       },
       secrets: {
-        Database__Password: ecs.Secret.fromSecretsManager(databaseSecret, 'password'),
+        Database__Password: ecs.Secret.fromSecretsManager(workerSecret, 'password'),
       },
     })
 
@@ -243,11 +259,16 @@ export class ErpDevStack extends cdk.Stack {
       logging: ecs.LogDrivers.awsLogs({ logGroup, streamPrefix: 'migrator' }),
       environment: {
         ...databaseEnv,
+        Database__Username: 'erp_owner',
+        Database__AdminUsername: 'erp',
         Authentication__SeedMemberships:
           'synthetic-a:11111111-1111-1111-1111-111111111111:default;synthetic-b:22222222-2222-2222-2222-222222222222:default',
       },
       secrets: {
-        Database__Password: ecs.Secret.fromSecretsManager(databaseSecret, 'password'),
+        Database__Password: ecs.Secret.fromSecretsManager(ownerSecret, 'password'),
+        Database__AdminPassword: ecs.Secret.fromSecretsManager(databaseSecret, 'password'),
+        Database__AppPassword: ecs.Secret.fromSecretsManager(appSecret, 'password'),
+        Database__WorkerPassword: ecs.Secret.fromSecretsManager(workerSecret, 'password'),
       },
     })
 
