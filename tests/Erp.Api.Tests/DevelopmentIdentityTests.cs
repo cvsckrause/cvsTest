@@ -51,6 +51,42 @@ public sealed class DevelopmentIdentityTests
 
         Assert.Equal(HttpStatusCode.Forbidden, status);
         Assert.Equal(Guid.Empty, fixture.Observed.TenantId);
+        Assert.Contains("no tenant membership", await ForbiddenDetail(fixture), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Authenticated_user_without_membership_joins_the_bootstrap_tenant()
+    {
+        await using var fixture = ApiFixture.Start(
+            environment: "Production",
+            authenticationEnabled: true,
+            developmentIdentityEnabled: false,
+            user: AuthenticatedUser("cognito-user"),
+            bootstrapTenantId: ConfiguredTenant);
+
+        var status = await GetStatus(fixture, "/api/v1/customers");
+
+        Assert.NotEqual(HttpStatusCode.Forbidden, status);
+        Assert.NotEqual(HttpStatusCode.Unauthorized, status);
+        Assert.Equal(ConfiguredTenant, fixture.Observed.TenantId);
+        Assert.Equal("cognito-user", fixture.Observed.UserId);
+    }
+
+    [Fact]
+    public async Task Bootstrap_tenant_does_not_replace_an_existing_membership()
+    {
+        await using var fixture = ApiFixture.Start(
+            environment: "Production",
+            authenticationEnabled: true,
+            developmentIdentityEnabled: false,
+            user: AuthenticatedUser("user-1"),
+            memberships: [TenantMembership.Grant("user-1", ClaimTenant, isDefault: true)],
+            bootstrapTenantId: ConfiguredTenant);
+
+        var status = await GetStatus(fixture, "/api/v1/customers");
+
+        Assert.NotEqual(HttpStatusCode.Forbidden, status);
+        Assert.Equal(ClaimTenant, fixture.Observed.TenantId);
     }
 
     [Fact]
@@ -68,6 +104,7 @@ public sealed class DevelopmentIdentityTests
 
         Assert.Equal(HttpStatusCode.Forbidden, status);
         Assert.Equal(Guid.Empty, fixture.Observed.TenantId);
+        Assert.Contains("not allowed", await ForbiddenDetail(fixture), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -84,6 +121,7 @@ public sealed class DevelopmentIdentityTests
 
         Assert.Equal(HttpStatusCode.Forbidden, status);
         Assert.Equal(string.Empty, fixture.Observed.UserId);
+        Assert.Contains("no subject", await ForbiddenDetail(fixture), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -237,6 +275,12 @@ public sealed class DevelopmentIdentityTests
         }
     }
 
+    private static async Task<string> ForbiddenDetail(ApiFixture fixture)
+    {
+        using var response = await fixture.Client.GetAsync("/api/v1/customers");
+        return await response.Content.ReadAsStringAsync();
+    }
+
     [Fact]
     public void Enabled_identity_fails_startup_when_authentication_is_on_outside_development()
     {
@@ -290,7 +334,8 @@ internal sealed class ApiFixture : IAsyncDisposable
         Guid? configuredTenant = null,
         string? configuredUserId = null,
         IReadOnlyList<TenantMembership>? memberships = null,
-        string? tenantHeader = null)
+        string? tenantHeader = null,
+        Guid? bootstrapTenantId = null)
     {
         var observed = new ObservedTenant();
         var factory = CreateFactory(
@@ -301,7 +346,8 @@ internal sealed class ApiFixture : IAsyncDisposable
             configuredUserId,
             user,
             observed,
-            memberships);
+            memberships,
+            bootstrapTenantId);
         return new ApiFixture(factory, observed, tenantHeader);
     }
 
@@ -313,7 +359,8 @@ internal sealed class ApiFixture : IAsyncDisposable
         string? configuredUserId = null,
         ClaimsPrincipal? user = null,
         ObservedTenant? observed = null,
-        IReadOnlyList<TenantMembership>? memberships = null)
+        IReadOnlyList<TenantMembership>? memberships = null,
+        Guid? bootstrapTenantId = null)
     {
         observed ??= new ObservedTenant();
         user ??= new ClaimsPrincipal(new ClaimsIdentity());
@@ -333,6 +380,7 @@ internal sealed class ApiFixture : IAsyncDisposable
             developmentIdentityEnabled ? "true" : "false");
         Environment.SetEnvironmentVariable("DevelopmentIdentity__TenantId", configuredTenant?.ToString() ?? "");
         Environment.SetEnvironmentVariable("DevelopmentIdentity__UserId", configuredUserId ?? "");
+        Environment.SetEnvironmentVariable("Authentication__BootstrapTenantId", bootstrapTenantId?.ToString() ?? "");
 
         return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
@@ -377,10 +425,27 @@ internal sealed class ObservedTenant
     }
 }
 
-internal sealed class FakeTenantMemberships(IReadOnlyList<TenantMembership> memberships) : ITenantMemberships
+internal sealed class FakeTenantMemberships : ITenantMemberships
 {
+    private readonly List<TenantMembership> memberships;
+
+    public FakeTenantMemberships(IReadOnlyList<TenantMembership> memberships)
+    {
+        this.memberships = memberships.ToList();
+    }
+
     public Task<IReadOnlyList<TenantMembership>> ListAsync(string userId, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<TenantMembership>>(memberships.Where(membership => membership.UserId == userId).ToArray());
+
+    public Task EnsureDefaultAsync(string userId, Guid tenantId, CancellationToken cancellationToken)
+    {
+        if (memberships.All(membership => membership.UserId != userId))
+        {
+            memberships.Add(TenantMembership.Grant(userId, tenantId, isDefault: true));
+        }
+
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed class TestPrincipal(ClaimsPrincipal user)

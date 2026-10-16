@@ -26,11 +26,16 @@ export type StockReceipt = Json<Schemas['StockReceiptResponse']>
 
 const baseUrl = import.meta.env.VITE_API_URL ?? '/api/v1'
 
-async function readJson<T>(response: Response, path: string): Promise<T> {
+function failureMessage(status: number, method?: string) {
+  const verb = (method ?? 'GET').toUpperCase() === 'GET' ? 'Laden' : 'Speichern'
+  return `${verb} fehlgeschlagen (${status})`
+}
+
+async function readJson<T>(response: Response, path: string, method?: string): Promise<T> {
   const contentType = response.headers.get('content-type') ?? ''
   const raw = await response.text()
   if (!raw) {
-    if (!response.ok) throw new Error(`Speichern fehlgeschlagen (${response.status})`)
+    if (!response.ok) throw new Error(failureMessage(response.status, method))
     return undefined as T
   }
 
@@ -63,9 +68,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error('API nicht erreichbar. Seite neu laden oder prüfen, ob die ERP-API läuft.')
   }
 
-  const payload = await readJson<{ detail?: string; error?: string } & T>(response, path)
+  const payload = await readJson<{ detail?: string; error?: string } & T>(response, path, init?.method)
   if (!response.ok) {
-    throw new Error(payload?.detail ?? payload?.error ?? `Speichern fehlgeschlagen (${response.status})`)
+    throw new Error(payload?.detail ?? payload?.error ?? failureMessage(response.status, init?.method))
   }
 
   return payload as T
