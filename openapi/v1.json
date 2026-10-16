@@ -229,7 +229,10 @@
             "type": "array"
           },
           "orderNumber": {
-            "type": "string"
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "shipToAddressId": {
             "format": "uuid",

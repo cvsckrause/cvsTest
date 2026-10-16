@@ -129,7 +129,12 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
           <div className="document-head document-head-order">
             <label>
               Auftragsnummer
-              <input value={orderNumber} onChange={(event) => setOrderNumber(event.target.value)} disabled={Boolean(order)} />
+              <input
+                value={orderNumber}
+                placeholder="automatisch"
+                onChange={(event) => setOrderNumber(event.target.value)}
+                disabled={Boolean(order)}
+              />
             </label>
             <label>
               Lager
@@ -208,7 +213,7 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
         <aside className="summary">
           <div className="summary-heading">
             <span className={statusClass(order?.status)}>{statusLabel(order?.status)}</span>
-            <span>{orderNumber}</span>
+            <span>{orderNumber.trim() || 'automatisch'}</span>
           </div>
           <dl>
             <div><dt>Warenwert</dt><dd>{euro(order?.netAmount ?? netAmount)}</dd></div>

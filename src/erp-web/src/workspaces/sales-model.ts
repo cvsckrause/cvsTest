@@ -11,11 +11,10 @@ import type {
   SalesOrder,
   SalesOrderSummary,
 } from '../api'
-import { keepOrFirst, nextOrderNumber } from '../format'
-import { createId } from '../id'
+import { keepOrFirst } from '../format'
 import type { AppRoute } from '../route'
 
-const initialOrderNumber = `SO-${createId().replaceAll('-', '').slice(0, 8).toUpperCase()}`
+const initialOrderNumber = ''
 const POLL_MS = 2000
 const POLL_MAX_ATTEMPTS = 30
 type WorkflowStep = 'capture' | 'release' | 'deliver' | 'invoice'
@@ -109,7 +108,7 @@ export function useSalesWorkspace({
         setStep('capture')
         setCustomerId('')
         setShipToAddressId('')
-        setOrderNumber((current) => nextOrderNumber(current))
+        setOrderNumber('')
       }
       return
     }
@@ -361,7 +360,7 @@ export function useSalesWorkspace({
     setCustomerId('')
     setShipToAddressId('')
     setWarehouseCode('MAIN')
-    setOrderNumber((current) => nextOrderNumber(current))
+    setOrderNumber('')
     setNotice('Neuer Auftrag. Position hinzufügen, speichern, dann freigeben.')
     navigate({ workspace: 'sales', documentId: 'new' })
   }

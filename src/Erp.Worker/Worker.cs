@@ -75,7 +75,18 @@ public sealed class Worker(
                         .SingleAsync(item => item.Id == released.SalesOrderId, cancellationToken);
                     if (order.Status != SalesOrderStatus.Cancelled)
                     {
-                        var deliveryNumber = $"DEL-{released.SalesOrderNumber}";
+                        var deliveryNumber = await NumberRangeAllocator.AllocateAsync(
+                            db,
+                            released.TenantId,
+                            NumberDocumentType.Delivery,
+                            DateTimeOffset.UtcNow,
+                            cancellationToken);
+                        var invoiceNumber = await NumberRangeAllocator.AllocateAsync(
+                            db,
+                            released.TenantId,
+                            NumberDocumentType.Invoice,
+                            DateTimeOffset.UtcNow,
+                            cancellationToken);
                         db.Deliveries.Add(new Delivery(
                             released.TenantId,
                             released.SalesOrderId,
@@ -84,7 +95,7 @@ public sealed class Worker(
                         db.Invoices.Add(new Invoice(
                             released.TenantId,
                             released.SalesOrderId,
-                            $"INV-{released.SalesOrderNumber}",
+                            invoiceNumber,
                             released.NetAmount));
                         var occurredAt = DateTimeOffset.UtcNow;
                         foreach (var line in order.Lines)

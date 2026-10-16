@@ -120,10 +120,19 @@ internal static class SalesEndpoints
                 .ToDictionaryAsync(article => article.Id, cancellationToken);
             if (articles.Count != articleIds.Length) return Results.BadRequest(new { error = "One or more articles do not exist." });
 
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            var orderNumber = string.IsNullOrWhiteSpace(request.OrderNumber)
+                ? await NumberRangeAllocator.AllocateAsync(
+                    db,
+                    tenant.TenantId,
+                    NumberDocumentType.SalesOrder,
+                    DateTimeOffset.UtcNow,
+                    cancellationToken)
+                : request.OrderNumber;
             var order = SalesOrder.Create(
                 tenant.TenantId,
                 request.CustomerId,
-                request.OrderNumber,
+                orderNumber,
                 request.ShipToAddressId,
                 shipToAddress.ToSnapshot(),
                 request.WarehouseCode ?? "MAIN");
@@ -136,6 +145,7 @@ internal static class SalesEndpoints
             db.SalesOrders.Add(order);
             db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, Idempotency.CreateSalesOrder, order.Id));
             await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return Results.Created($"/api/v1/sales-orders/{order.Id}", ToResponse(order));
         }).Produces<SalesOrderResponse>(StatusCodes.Status201Created);
 
@@ -382,7 +392,7 @@ internal static class SalesEndpoints
 public sealed record CreateSalesOrderRequest(
     Guid CustomerId,
     Guid ShipToAddressId,
-    string OrderNumber,
+    string? OrderNumber,
     IReadOnlyCollection<CreateSalesOrderLineRequest> Lines,
     string? WarehouseCode = null);
 public sealed record CreateSalesOrderLineRequest(Guid ArticleId, decimal Quantity);

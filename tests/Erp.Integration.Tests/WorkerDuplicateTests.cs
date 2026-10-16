@@ -39,22 +39,18 @@ public sealed class WorkerDuplicateTests(PostgresFixture fixture)
             Guid.NewGuid().ToString("N"));
         await api.PostOkAsync($"/api/v1/sales-orders/{order.Id}/release", new { }, Guid.NewGuid().ToString("N"));
 
-        var deliveryNumber = "DEL-" + orderNumber;
-        var invoiceNumber = "INV-" + orderNumber;
-        Assert.Equal(0, await fixture.Probe.CountDeliveriesAsync(fixture.TenantA, deliveryNumber));
-
         await OutboxProcessor.ProcessOnceAsync(fixture.WorkerConnectionString);
 
         var messageId = await fixture.Probe.OutboxIdForOrderAsync(fixture.TenantA, order.Id);
-        Assert.Equal(1, await fixture.Probe.CountDeliveriesAsync(fixture.TenantA, deliveryNumber));
-        Assert.Equal(1, await fixture.Probe.CountInvoicesAsync(fixture.TenantA, invoiceNumber));
+        Assert.Equal(1, await fixture.Probe.CountDeliveriesForOrderAsync(fixture.TenantA, order.Id));
+        Assert.Equal(1, await fixture.Probe.CountInvoicesForOrderAsync(fixture.TenantA, order.Id));
         Assert.Equal(1, await fixture.Probe.CountInboxAsync(messageId));
 
         Assert.Equal(1, await fixture.Probe.ClearProcessedAtAsync(fixture.TenantA, messageId));
         await OutboxProcessor.ProcessOnceAsync(fixture.WorkerConnectionString);
 
-        Assert.Equal(1, await fixture.Probe.CountDeliveriesAsync(fixture.TenantA, deliveryNumber));
-        Assert.Equal(1, await fixture.Probe.CountInvoicesAsync(fixture.TenantA, invoiceNumber));
+        Assert.Equal(1, await fixture.Probe.CountDeliveriesForOrderAsync(fixture.TenantA, order.Id));
+        Assert.Equal(1, await fixture.Probe.CountInvoicesForOrderAsync(fixture.TenantA, order.Id));
         Assert.Equal(1, await fixture.Probe.CountInboxAsync(messageId));
     }
 }

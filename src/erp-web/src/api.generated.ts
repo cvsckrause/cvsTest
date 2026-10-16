@@ -962,7 +962,7 @@ export interface components {
             /** Format: uuid */
             customerId: string;
             lines: components["schemas"]["CreateSalesOrderLineRequest"][];
-            orderNumber: string;
+            orderNumber: null | string;
             /** Format: uuid */
             shipToAddressId: string;
             warehouseCode?: null | string;
