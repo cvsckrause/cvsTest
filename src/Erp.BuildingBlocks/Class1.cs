@@ -49,3 +49,13 @@ public sealed record AddressSnapshot(
     string City,
     string CountryCode,
     string? AdditionalLine);
+
+public sealed record SellerSnapshot(
+    string Name,
+    string Street,
+    string PostalCode,
+    string City,
+    string CountryCode,
+    string? AdditionalLine,
+    string? Steuernummer,
+    string? UstIdNr);

@@ -11,6 +11,7 @@ namespace Erp.Integration.Tests;
 public sealed class InvoiceContentUpgradeTests(PostgresFixture fixture)
 {
     private const string OrderLineMigration = "20261016193922_FreezeOrderLineContent";
+    private const string BillToMigration = "20261016203055_FreezeOrderBillTo";
     private const string OwnerRole = "erp_invoice_content_owner";
 
     private static readonly Guid TenantX = Guid.Parse("0000000a-0000-0000-0000-000000000016");
@@ -38,6 +39,78 @@ public sealed class InvoiceContentUpgradeTests(PostgresFixture fixture)
         Assert.Equal((true, true, true), await probe.IsolationAsync(new TenantTable("erp", "articles")));
         Assert.Equal((true, true, true), await probe.IsolationAsync(new TenantTable("erp", "sales_order_lines")));
         Assert.Equal((OwnerRole, false, false), await probe.RoleAsync(scratch.OwnerConnectionString));
+    }
+
+    [Fact]
+    public async Task Bill_to_upgrade_bills_every_tenants_customer_at_the_ship_to_and_keeps_forced_rls()
+    {
+        await using var scratch = await ScratchDatabase.CreateAsync(fixture.AdminConnectionString, OwnerRole);
+        await MigrateAsAdminAsync(scratch, MigrationBefore(BillToMigration));
+        var orderX = await SeedOrderWithCustomerAsync(scratch, TenantX, "Kunde X", "K-X", "Haus B");
+        var orderY = await SeedOrderWithCustomerAsync(scratch, TenantY, "Kunde Y", "K-Y", null);
+        await HandOverAsync(scratch, "sales_orders", "customers");
+
+        await MigrateAsOwnerAsync(scratch, BillToMigration);
+
+        Assert.Equal(
+            ("Kunde X", "K-X", true, "Ship K-X", "1 Street", "10115", "Berlin", "DE", "Haus B"),
+            await BillToAsync(scratch, orderX));
+        Assert.Equal(
+            ("Kunde Y", "K-Y", true, "Ship K-Y", "1 Street", "10115", "Berlin", "DE", null),
+            await BillToAsync(scratch, orderY));
+
+        var probe = new DatabaseProbe(scratch.AdminConnectionString, scratch.AdminConnectionString);
+        Assert.Equal((true, true, true), await probe.IsolationAsync(new TenantTable("erp", "sales_orders")));
+        Assert.Equal((true, true, true), await probe.IsolationAsync(new TenantTable("erp", "customers")));
+    }
+
+    private static async Task<Guid> SeedOrderWithCustomerAsync(
+        ScratchDatabase scratch, Guid tenantId, string customerName, string customerNumber, string? additionalLine)
+    {
+        var orderId = Guid.NewGuid();
+        await ExecuteAsync(scratch, """
+            with customer as (
+                insert into erp.customers ("Id", "TenantId", "Number", "Name")
+                values (gen_random_uuid(), @tenant, @number, @name)
+                returning "Id"
+            )
+            insert into erp.sales_orders (
+                "Id", "TenantId", "CustomerId", "OrderNumber", "ShipToAddressId", "ShipToName", "ShipToStreet",
+                "ShipToPostalCode", "ShipToCity", "ShipToCountryCode", "ShipToAdditionalLine", "Status", "CreatedAt")
+            select @order, @tenant, customer."Id", 'SO-' || @number, gen_random_uuid(), 'Ship ' || @number, '1 Street',
+                '10115', 'Berlin', 'DE', @additional, 1, now()
+            from customer
+            """,
+            ("tenant", tenantId), ("number", customerNumber), ("name", customerName), ("order", orderId),
+            ("additional", (object?)additionalLine ?? DBNull.Value));
+        return orderId;
+    }
+
+    private static async Task<(string BuyerName, string BuyerNumber, bool NoAddressId, string Name, string Street,
+        string PostalCode, string City, string CountryCode, string? AdditionalLine)> BillToAsync(ScratchDatabase scratch, Guid orderId)
+    {
+        await using var connection = new NpgsqlConnection(scratch.AdminConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            select "BuyerName", "BuyerNumber", "BillToAddressId" is null, "BillToName", "BillToStreet",
+                   "BillToPostalCode", "BillToCity", "BillToCountryCode", "BillToAdditionalLine"
+            from erp.sales_orders where "Id" = @id
+            """,
+            connection);
+        command.Parameters.AddWithValue("id", orderId);
+        await using var reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        return (
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetBoolean(2),
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.GetString(5),
+            reader.GetString(6),
+            reader.GetString(7),
+            reader.IsDBNull(8) ? null : reader.GetString(8));
     }
 
     private static async Task<Guid> SeedOrderLineAsync(ScratchDatabase scratch, Guid tenantId, string articleName)

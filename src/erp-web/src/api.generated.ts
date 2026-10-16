@@ -901,6 +901,15 @@ export interface paths {
                         "application/json": components["schemas"]["SalesOrderResponse"];
                     };
                 };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SellerDetailsIncompleteResponse"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -1160,6 +1169,13 @@ export interface components {
             sku: string;
             taxCode: string;
         };
+        BillToSnapshot: {
+            address: components["schemas"]["AddressSnapshot"];
+            /** Format: uuid */
+            addressId: null | string;
+            buyerName: string;
+            buyerNumber: string;
+        };
         CreateAddressRequest: {
             additionalLine: null | string;
             city: string;
@@ -1189,6 +1205,8 @@ export interface components {
             quantity: number | string;
         };
         CreateSalesOrderRequest: {
+            /** Format: uuid */
+            billToAddressId?: null | string;
             /** Format: uuid */
             customerId: string;
             lines: components["schemas"]["CreateSalesOrderLineRequest"][];
@@ -1281,6 +1299,7 @@ export interface components {
             unitPrice: number | string;
         };
         SalesOrderResponse: {
+            billTo: components["schemas"]["BillToSnapshot"];
             /** Format: uuid */
             customerId: string;
             /** Format: uuid */
@@ -1306,6 +1325,10 @@ export interface components {
             netAmount: number | string;
             orderNumber: string;
             status: string;
+        };
+        SellerDetailsIncompleteResponse: {
+            error: string;
+            missingSellerFields: string[];
         };
         SellerDetailsResponse: {
             additionalLine: null | string;
