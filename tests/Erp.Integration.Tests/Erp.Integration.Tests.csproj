@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Erp.Api\Erp.Api.csproj" />
+    <ProjectReference Include="..\..\src\Erp.Observability\Erp.Observability.csproj" />
     <ProjectReference Include="..\..\src\Erp.Persistence\Erp.Persistence.csproj" />
     <ProjectReference Include="..\..\src\Erp.Worker\Erp.Worker.csproj">
       <Aliases>WorkerHost</Aliases>

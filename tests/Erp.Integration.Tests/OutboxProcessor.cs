@@ -15,7 +15,7 @@ namespace Erp.Integration.Tests;
 
 internal static class OutboxProcessor
 {
-    public static async Task ProcessOnceAsync(string connectionString, WorkerOptions? options = null)
+    public static async Task ProcessOnceAsync(string connectionString, WorkerOptions? options = null, CapturedLogs? logs = null)
     {
         var tenant = new MutableTenantContext();
         var services = new ServiceCollection();
@@ -26,7 +26,14 @@ internal static class OutboxProcessor
         services.AddDbContextFactory<ErpDbContext>((provider, dbOptions) => dbOptions
             .UseNpgsql(connectionString)
             .AddInterceptors(new TenantConnectionInterceptor(provider.GetRequiredService<ITenantContext>())));
-        services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Warning));
+        services.AddLogging(builder =>
+        {
+            builder.SetMinimumLevel(logs is null ? LogLevel.Warning : LogLevel.Information);
+            if (logs is not null)
+            {
+                builder.AddProvider(logs);
+            }
+        });
 
         await using var provider = services.BuildServiceProvider();
         var worker = new Worker(

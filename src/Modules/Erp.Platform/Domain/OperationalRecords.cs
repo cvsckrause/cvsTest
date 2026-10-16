@@ -55,19 +55,30 @@ public sealed class OutboxMessage : ITenantEntity
     {
     }
 
-    private OutboxMessage(Guid tenantId, string eventType, string payload, Guid eventId, DateTimeOffset occurredAt)
+    private OutboxMessage(
+        Guid tenantId,
+        string eventType,
+        string payload,
+        Guid eventId,
+        DateTimeOffset occurredAt,
+        string correlationId,
+        string userId)
     {
         Id = eventId;
         TenantId = tenantId;
         EventType = eventType;
         Payload = payload;
         OccurredAt = occurredAt;
+        CorrelationId = Bound(correlationId, 100);
+        UserId = Bound(userId, 200);
     }
 
     public Guid Id { get; private set; }
     public Guid TenantId { get; private set; }
     public string EventType { get; private set; } = string.Empty;
     public string Payload { get; private set; } = string.Empty;
+    public string CorrelationId { get; private set; } = string.Empty;
+    public string UserId { get; private set; } = string.Empty;
     public DateTimeOffset OccurredAt { get; private set; }
     public DateTimeOffset? ProcessedAt { get; private set; }
     public DateTimeOffset? NextAttemptAt { get; private set; }
@@ -81,8 +92,20 @@ public sealed class OutboxMessage : ITenantEntity
         string eventType,
         string payload,
         Guid eventId,
-        DateTimeOffset occurredAt) =>
-        new(tenantId, eventType, payload, eventId, occurredAt);
+        DateTimeOffset occurredAt,
+        string correlationId,
+        string userId) =>
+        new(tenantId, eventType, payload, eventId, occurredAt, correlationId, userId);
+
+    private static string Bound(string value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+        {
+            return value;
+        }
+
+        return value[..maxLength];
+    }
 
     public void MarkProcessed()
     {

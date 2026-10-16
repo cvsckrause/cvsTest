@@ -196,6 +196,24 @@ internal sealed class DatabaseProbe(string appConnectionString, string adminConn
                 : throw new InvalidOperationException($"No {eventType} outbox message for order {salesOrderId}.");
         });
 
+    public Task<string> OutboxCorrelationAsync(Guid tenantId, Guid messageId) =>
+        WithAppAsync(tenantId, async connection =>
+        {
+            await using var command = new NpgsqlCommand(
+                """
+                select "CorrelationId"
+                from erp.outbox_messages
+                where "Id" = @id and "TenantId" = @tenant
+                """,
+                connection);
+            command.Parameters.AddWithValue("id", messageId);
+            command.Parameters.AddWithValue("tenant", tenantId);
+            var value = await command.ExecuteScalarAsync();
+            return value is string correlationId
+                ? correlationId
+                : throw new InvalidOperationException($"No outbox message {messageId}.");
+        });
+
     public Task<bool> OutboxProcessedAsync(Guid tenantId, Guid messageId) =>
         WithAppAsync(tenantId, async connection =>
         {

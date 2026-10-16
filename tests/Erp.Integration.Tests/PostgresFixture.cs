@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using Testcontainers.PostgreSql;
 
@@ -31,6 +32,7 @@ public sealed class PostgresFixture : IAsyncLifetime
     public string AppConnectionString { get; private set; } = string.Empty;
     public string WorkerConnectionString { get; private set; } = string.Empty;
     internal DatabaseProbe Probe { get; private set; } = null!;
+    internal CapturedLogs Logs { get; } = new();
 
     public async Task InitializeAsync()
     {
@@ -89,7 +91,7 @@ public sealed class PostgresFixture : IAsyncLifetime
         }
     }
 
-    private static WebApplicationFactory<Program> CreateFactory(string connectionString)
+    private WebApplicationFactory<Program> CreateFactory(string connectionString)
     {
         Environment.SetEnvironmentVariable("ConnectionStrings__Erp", connectionString);
         Environment.SetEnvironmentVariable("Authentication__Authority", "https://example.invalid/");
@@ -105,6 +107,7 @@ public sealed class PostgresFixture : IAsyncLifetime
         return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Production");
+            builder.ConfigureLogging(logging => logging.AddProvider(Logs));
             builder.ConfigureTestServices(services =>
             {
                 services.AddAuthentication()

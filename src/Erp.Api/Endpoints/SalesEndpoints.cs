@@ -251,7 +251,14 @@ internal static class SalesEndpoints
                 lines = released.Lines
             });
 
-            db.OutboxMessages.Add(OutboxMessage.From(tenant.TenantId, eventType, payload, released.EventId, released.OccurredAt));
+            db.OutboxMessages.Add(OutboxMessage.From(
+                tenant.TenantId,
+                eventType,
+                payload,
+                released.EventId,
+                released.OccurredAt,
+                httpContext.TraceIdentifier,
+                tenant.UserId));
             db.AuditEntries.Add(AuditEntry.Create(
                 tenant.TenantId,
                 tenant.UserId,
@@ -326,7 +333,14 @@ internal static class SalesEndpoints
                 lines = cancelled.Lines
             });
 
-            db.OutboxMessages.Add(OutboxMessage.From(tenant.TenantId, eventType, payload, cancelled.EventId, cancelled.OccurredAt));
+            db.OutboxMessages.Add(OutboxMessage.From(
+                tenant.TenantId,
+                eventType,
+                payload,
+                cancelled.EventId,
+                cancelled.OccurredAt,
+                httpContext.TraceIdentifier,
+                tenant.UserId));
             db.AuditEntries.Add(AuditEntry.Create(
                 tenant.TenantId,
                 tenant.UserId,

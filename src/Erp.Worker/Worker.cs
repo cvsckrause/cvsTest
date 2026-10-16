@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Erp.Billing.Domain;
 using Erp.BuildingBlocks;
 using Erp.Inventory.Domain;
+using Erp.Observability;
 using Erp.Persistence;
 using Erp.Platform.Domain;
 using Erp.Sales.Domain;
@@ -43,9 +45,14 @@ public sealed class Worker(
         {
             tenant.TenantId = claimed.TenantId;
             await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+            var message = await db.OutboxMessages.SingleAsync(item => item.Id == claimed.Id, cancellationToken);
+            using var scope = logger.BeginScope(RequestLog.Scope(message.CorrelationId, message.TenantId, message.UserId));
+            using var activity = ErpActivities.Worker.StartActivity("outbox.process", ActivityKind.Consumer);
+            activity?.SetTag("correlation.id", message.CorrelationId);
+            activity?.SetTag("tenant.id", message.TenantId.ToString());
+            activity?.SetTag("enduser.id", message.UserId);
             try
             {
-                var message = await db.OutboxMessages.SingleAsync(item => item.Id == claimed.Id, cancellationToken);
                 if (await db.InboxMessages.AnyAsync(inbox => inbox.MessageId == message.Id, cancellationToken))
                 {
                     message.MarkProcessed();
@@ -127,11 +134,20 @@ public sealed class Worker(
             catch (Exception exception)
             {
                 db.ChangeTracker.Clear();
-                var message = await db.OutboxMessages.SingleAsync(item => item.Id == claimed.Id, cancellationToken);
-                message.MarkFailed(exception.Message, NextAttemptAt(message.AttemptCount + 1, settings.BaseDelaySeconds), maxAttempts);
+                var failed = await db.OutboxMessages.SingleAsync(item => item.Id == claimed.Id, cancellationToken);
+                failed.MarkFailed(exception.Message, NextAttemptAt(failed.AttemptCount + 1, settings.BaseDelaySeconds), maxAttempts);
                 await db.SaveChangesAsync(cancellationToken);
                 logger.LogWarning(exception, "Failed outbox event {EventId}.", claimed.Id);
             }
+        }
+
+        try
+        {
+            OutboxTelemetry.Publish(await OutboxMetrics.ReadAsync(database.ConnectionString, cancellationToken));
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogError(exception, "Outbox metrics failed.");
         }
     }
 
