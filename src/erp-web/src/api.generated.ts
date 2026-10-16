@@ -412,6 +412,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["InvoiceResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sales-orders": {
         parameters: {
             query?: never;
@@ -419,7 +463,30 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: {
+            parameters: {
+                query?: {
+                    status?: string;
+                    after?: string;
+                    limit?: number | string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SalesOrderSummaryResponse"][];
+                    };
+                };
+            };
+        };
         put?: never;
         post: {
             parameters: {
@@ -476,6 +543,131 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["SalesOrderResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sales-orders/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SalesOrderResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sales-orders/{id}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeliveryResponse"][];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sales-orders/{id}/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["InvoiceResponse"][];
                     };
                 };
                 /** @description Not Found */
@@ -770,9 +962,10 @@ export interface components {
             /** Format: uuid */
             customerId: string;
             lines: components["schemas"]["CreateSalesOrderLineRequest"][];
-            orderNumber: string;
+            orderNumber: null | string;
             /** Format: uuid */
             shipToAddressId: string;
+            warehouseCode?: null | string;
         };
         CreateStockReceiptRequest: {
             /** Format: uuid */
@@ -797,6 +990,27 @@ export interface components {
             id: string;
             name: string;
             number: string;
+        };
+        DeliveryResponse: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            id: string;
+            number: string;
+            /** Format: uuid */
+            salesOrderId: string;
+            shipTo: components["schemas"]["AddressSnapshot"];
+        };
+        InvoiceResponse: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: double */
+            netAmount: number | string;
+            number: string;
+            /** Format: uuid */
+            salesOrderId: string;
         };
         LinkCustomerAddressRequest: {
             /** Format: uuid */
@@ -824,6 +1038,19 @@ export interface components {
             shipTo: components["schemas"]["AddressSnapshot"];
             /** Format: uuid */
             shipToAddressId: string;
+            status: string;
+            warehouseCode: string;
+        };
+        SalesOrderSummaryResponse: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            customerId: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: double */
+            netAmount: number | string;
+            orderNumber: string;
             status: string;
         };
         StockMovementResponse: {

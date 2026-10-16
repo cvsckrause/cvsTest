@@ -17,6 +17,7 @@ public sealed class CrossTenantIsolationTests(PostgresFixture fixture)
         await AssertListHidesOwner(client, "/api/v1/articles", owner.ArticleId, viewer.ArticleId);
         await AssertListHidesOwner(client, "/api/v1/stock", owner.ArticleId, viewer.ArticleId);
         await AssertListHidesOwner(client, "/api/v1/stock/movements", owner.MovementId, viewer.MovementId);
+        await AssertListHidesOwner(client, "/api/v1/sales-orders", owner.SalesOrderId, viewer.SalesOrderId);
         await AssertListHidesOwner(client, $"/api/v1/customers/{viewer.CustomerId}/addresses", owner.AddressId, viewer.AddressId);
 
         await AssertDetailHidden(client, $"/api/v1/addresses/{owner.AddressId}");

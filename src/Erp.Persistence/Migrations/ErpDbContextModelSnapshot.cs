@@ -417,6 +417,42 @@ namespace Erp.Persistence.Migrations
                     b.ToTable("inbox_messages", "erp");
                 });
 
+            modelBuilder.Entity("Erp.Platform.Domain.NumberRange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<long>("NextValue")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Prefix")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<bool>("ResetYearly")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "DocumentType", "Year")
+                        .IsUnique();
+
+                    b.ToTable("number_ranges", "erp");
+                });
+
             modelBuilder.Entity("Erp.Platform.Domain.OutboxMessage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -547,6 +583,13 @@ namespace Erp.Persistence.Migrations
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("WarehouseCode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasDefaultValue("MAIN");
 
                     b.HasKey("Id");
 

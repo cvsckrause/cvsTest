@@ -1,8 +1,10 @@
 using System.Text.Json;
 using Erp.Billing.Domain;
 using Erp.BuildingBlocks;
+using Erp.Inventory.Domain;
 using Erp.Persistence;
 using Erp.Platform.Domain;
+using Erp.Sales.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -51,6 +53,7 @@ public sealed class Worker(
                     continue;
                 }
 
+                await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
                 if (message.EventType == "erp.sales-order.released.v1")
                 {
                     var released = JsonSerializer.Deserialize<ReleasedOrderPayload>(
@@ -63,21 +66,62 @@ public sealed class Worker(
                         throw new InvalidOperationException("Released-order payload is missing ship-to snapshot.");
                     }
 
-                    db.Deliveries.Add(new Delivery(
-                        released.TenantId,
-                        released.SalesOrderId,
-                        $"DEL-{released.SalesOrderNumber}",
-                        released.ShipTo));
-                    db.Invoices.Add(new Invoice(
-                        released.TenantId,
-                        released.SalesOrderId,
-                        $"INV-{released.SalesOrderNumber}",
-                        released.NetAmount));
+                    if (!await SalesOrderRowLock.TryLockAsync(db, released.SalesOrderId, cancellationToken))
+                    {
+                        throw new InvalidOperationException("Released-order payload refers to a missing sales order.");
+                    }
+
+                    var order = await db.SalesOrders.Include(item => item.Lines)
+                        .SingleAsync(item => item.Id == released.SalesOrderId, cancellationToken);
+                    if (order.Status != SalesOrderStatus.Cancelled)
+                    {
+                        var deliveryNumber = await NumberRangeAllocator.AllocateAsync(
+                            db,
+                            released.TenantId,
+                            NumberDocumentType.Delivery,
+                            DateTimeOffset.UtcNow,
+                            cancellationToken);
+                        var invoiceNumber = await NumberRangeAllocator.AllocateAsync(
+                            db,
+                            released.TenantId,
+                            NumberDocumentType.Invoice,
+                            DateTimeOffset.UtcNow,
+                            cancellationToken);
+                        db.Deliveries.Add(new Delivery(
+                            released.TenantId,
+                            released.SalesOrderId,
+                            deliveryNumber,
+                            released.ShipTo));
+                        db.Invoices.Add(new Invoice(
+                            released.TenantId,
+                            released.SalesOrderId,
+                            invoiceNumber,
+                            released.NetAmount));
+                        var occurredAt = DateTimeOffset.UtcNow;
+                        foreach (var line in order.Lines)
+                        {
+                            var stock = await db.StockBalances.SingleOrDefaultAsync(
+                                balance => balance.ArticleId == line.ArticleId && balance.WarehouseCode == order.WarehouseCode,
+                                cancellationToken)
+                                ?? throw new InvalidOperationException(
+                                    $"No stock balance for article {line.ArticleId} in warehouse {order.WarehouseCode}.");
+                            stock.Issue(line.Quantity);
+                            db.StockMovements.Add(StockMovement.GoodsIssue(
+                                released.TenantId,
+                                line.ArticleId,
+                                order.WarehouseCode,
+                                line.Quantity,
+                                deliveryNumber,
+                                tenant.UserId,
+                                occurredAt));
+                        }
+                    }
                 }
 
                 db.InboxMessages.Add(new InboxMessage(message.Id));
                 message.MarkProcessed();
                 await db.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
                 logger.LogInformation("Processed outbox event {EventId} ({EventType}).", message.Id, message.EventType);
             }
             catch (Exception exception)

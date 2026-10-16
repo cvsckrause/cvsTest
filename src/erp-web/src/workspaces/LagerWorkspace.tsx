@@ -1,6 +1,12 @@
 import { formatWhen, qty } from '../format'
 import type { LagerModel } from './lager-model'
 
+function movementLabel(movementType: string) {
+  if (movementType === 'GoodsReceipt') return 'Wareneingang'
+  if (movementType === 'GoodsIssue') return 'Warenausgang'
+  return movementType
+}
+
 export function LagerWorkspace({ model }: { model: LagerModel }) {
   const {
     notice,
@@ -62,7 +68,7 @@ export function LagerWorkspace({ model }: { model: LagerModel }) {
             {movements.map((movement) => (
               <div className="grid-row movement-row" role="row" key={movement.id}>
                 <span>{formatWhen(movement.occurredAt)}</span>
-                <span>{movement.movementType === 'GoodsReceipt' ? 'Wareneingang' : movement.movementType}</span>
+                <span>{movementLabel(movement.movementType)}</span>
                 <strong>{movement.sku}</strong>
                 <span>{movement.warehouseCode}</span>
                 <span>{qty(movement.quantity)}</span>

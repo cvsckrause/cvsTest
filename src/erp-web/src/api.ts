@@ -17,6 +17,9 @@ export type CustomerAddress = Json<Schemas['CustomerAddressResponse']>
 export type Article = Json<Schemas['ArticleResponse']>
 export type OrderLine = Json<Schemas['SalesOrderLineResponse']>
 export type SalesOrder = Json<Schemas['SalesOrderResponse']>
+export type SalesOrderSummary = Json<Schemas['SalesOrderSummaryResponse']>
+export type Delivery = Json<Schemas['DeliveryResponse']>
+export type Invoice = Json<Schemas['InvoiceResponse']>
 export type StockBalanceRow = Json<Schemas['StockResponse']>
 export type StockMovementRow = Json<Schemas['StockMovementResponse']>
 export type StockReceipt = Json<Schemas['StockReceiptResponse']>
@@ -121,14 +124,28 @@ export const erpApi = {
         reference: reference?.trim() ? reference.trim() : null,
       }),
     }),
-  createOrder: (customerId: string, shipToAddressId: string, orderNumber: string, lines: OrderLine[]) =>
+salesOrders: (status?: string, after?: string) => {
+    const params = new URLSearchParams()
+    if (status) params.set('status', status)
+    if (after) params.set('after', after)
+    const query = params.toString()
+    return request<SalesOrderSummary[]>(`/sales-orders${query ? `?${query}` : ''}`)
+  },
+  createOrder: (
+    customerId: string,
+    shipToAddressId: string,
+    orderNumber: string,
+    lines: OrderLine[],
+    warehouseCode = 'MAIN',
+  ) =>
     request<SalesOrder>('/sales-orders', {
       method: 'POST',
       headers: { 'Idempotency-Key': createId() },
       body: JSON.stringify({
         customerId,
         shipToAddressId,
-        orderNumber,
+        orderNumber: orderNumber.trim() ? orderNumber.trim() : null,
+        warehouseCode,
         lines: lines.map((line) => ({ articleId: line.articleId, quantity: line.quantity })),
       }),
     }),
@@ -137,7 +154,15 @@ export const erpApi = {
       method: 'POST',
       headers: { 'Idempotency-Key': createId() },
     }),
+  cancelOrder: (id: string) =>
+    request<SalesOrder>(`/sales-orders/${id}/cancel`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': createId() },
+    }),
   salesOrder: (id: string) => request<SalesOrder>(`/sales-orders/${id}`),
+  salesOrderDeliveries: (id: string) => request<Delivery[]>(`/sales-orders/${id}/deliveries`),
+  salesOrderInvoices: (id: string) => request<Invoice[]>(`/sales-orders/${id}/invoices`),
+  invoice: (id: string) => request<Invoice>(`/invoices/${id}`),
   article: (id: string) => request<Article>(`/articles/${id}`),
   address: (id: string) => request<Address>(`/addresses/${id}`),
 }

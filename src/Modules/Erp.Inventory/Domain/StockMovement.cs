@@ -4,7 +4,8 @@ namespace Erp.Inventory.Domain;
 
 public enum StockMovementType
 {
-    GoodsReceipt = 1
+    GoodsReceipt = 1,
+    GoodsIssue = 2
 }
 
 public sealed class StockMovement : ITenantEntity
@@ -59,4 +60,14 @@ public sealed class StockMovement : ITenantEntity
         string createdBy,
         DateTimeOffset occurredAt) =>
         new(tenantId, articleId, warehouseCode, quantity, StockMovementType.GoodsReceipt, reference, createdBy, occurredAt);
+
+    public static StockMovement GoodsIssue(
+        Guid tenantId,
+        Guid articleId,
+        string warehouseCode,
+        decimal quantity,
+        string? reference,
+        string createdBy,
+        DateTimeOffset occurredAt) =>
+        new(tenantId, articleId, warehouseCode, quantity, StockMovementType.GoodsIssue, reference, createdBy, occurredAt);
 }

@@ -129,6 +129,64 @@ public sealed class TradingFlowTests
         Assert.Equal("local-developer", movement.CreatedBy);
         Assert.Equal(occurredAt, movement.OccurredAt);
     }
+
+    [Fact]
+    public void Goods_issue_reduces_on_hand_and_reserved()
+    {
+        var stock = StockBalance.Create(TenantId, ArticleId, "MAIN", 10);
+        stock.Reserve(3);
+
+        stock.Issue(3);
+
+        Assert.Equal(7, stock.OnHand);
+        Assert.Equal(0, stock.Reserved);
+    }
+
+    [Fact]
+    public void Goods_issue_can_consume_part_of_the_reservation()
+    {
+        var stock = StockBalance.Create(TenantId, ArticleId, "MAIN", 10);
+        stock.Reserve(3);
+
+        stock.Issue(1);
+
+        Assert.Equal(9, stock.OnHand);
+        Assert.Equal(2, stock.Reserved);
+    }
+
+    [Fact]
+    public void Goods_issue_rejects_non_positive_or_unreserved_quantity()
+    {
+        var stock = StockBalance.Create(TenantId, ArticleId, "MAIN", 10);
+        stock.Reserve(3);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => stock.Issue(0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => stock.Issue(-1));
+        Assert.Throws<InvalidOperationException>(() => stock.Issue(4));
+        Assert.Equal(10, stock.OnHand);
+        Assert.Equal(3, stock.Reserved);
+    }
+
+    [Fact]
+    public void Goods_issue_movement_records_immutable_trail_fields()
+    {
+        var occurredAt = DateTimeOffset.Parse("2026-10-15T11:00:00Z");
+        var movement = StockMovement.GoodsIssue(
+            TenantId,
+            ArticleId,
+            "main",
+            3,
+            "DEL-SO-1",
+            "erp-worker",
+            occurredAt);
+
+        Assert.Equal("MAIN", movement.WarehouseCode);
+        Assert.Equal(3, movement.Quantity);
+        Assert.Equal(StockMovementType.GoodsIssue, movement.MovementType);
+        Assert.Equal("DEL-SO-1", movement.Reference);
+        Assert.Equal("erp-worker", movement.CreatedBy);
+        Assert.Equal(occurredAt, movement.OccurredAt);
+    }
 }
 
 public sealed class MasterDataTests

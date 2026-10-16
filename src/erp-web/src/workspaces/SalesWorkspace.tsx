@@ -1,4 +1,3 @@
-import type { SalesOrder } from '../api'
 import { euro } from '../format'
 import type { SalesModel } from './sales-model'
 
@@ -10,6 +9,8 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
     step,
     orderNumber,
     setOrderNumber,
+    warehouseCode,
+    setWarehouseCode,
     customers,
     articles,
     shippingLinks,
@@ -29,15 +30,89 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
     goTo,
     saveOrder,
     releaseOrder,
+    cancelOrder,
     startNewOrder,
+    showingList,
+    orders,
+    listStatus,
+    setListStatus,
+    listBusy,
+    openOrderFromList,
+    showOrderList,
+    deliveries,
+    invoices,
+    documentsWaiting,
   } = model
+
+  if (showingList) {
+    return (
+      <>
+        <header className="topbar">
+          <div>
+            <p className="breadcrumb">Vertrieb / Aufträge</p>
+            <h1>Auftragsliste</h1>
+          </div>
+          <div className="system-state"><span /> Entwicklung · Nordics</div>
+        </header>
+
+        <section className="workspace sales-list-workspace">
+          <div className="document">
+            <div className="sales-list-toolbar">
+              <label>
+                Status
+                <select
+                  value={listStatus}
+                  onChange={(event) => setListStatus(event.target.value as typeof listStatus)}
+                >
+                  <option value="">Alle</option>
+                  <option value="Draft">Entwurf</option>
+                  <option value="Released">Freigegeben</option>
+                  <option value="Cancelled">Storniert</option>
+                </select>
+              </label>
+              <button className="primary" type="button" onClick={startNewOrder} disabled={busy}>
+                Neuer Auftrag
+              </button>
+            </div>
+
+            <div className="line-grid sales-order-list" role="table" aria-label="Auftragsliste">
+              <div className="grid-row grid-head" role="row">
+                <span>Nummer</span>
+                <span>Status</span>
+                <span>Netto</span>
+                <span>Erstellt</span>
+                <span />
+              </div>
+              {orders.map((row) => (
+                <div className="grid-row" role="row" key={row.id}>
+                  <strong>{row.orderNumber}</strong>
+                  <span>{statusLabel(row.status)}</span>
+                  <span>{euro(row.netAmount)}</span>
+                  <span>{formatCreatedAt(row.createdAt)}</span>
+                  <button className="secondary" type="button" onClick={() => openOrderFromList(row.id)}>
+                    Öffnen
+                  </button>
+                </div>
+              ))}
+              {orders.length === 0 && (
+                <div className="empty-row">
+                  {listBusy ? 'Aufträge werden geladen …' : 'Keine Aufträge für diesen Filter.'}
+                </div>
+              )}
+            </div>
+            <p className="action-hint">{notice}</p>
+          </div>
+        </section>
+      </>
+    )
+  }
 
   return (
     <>
       <header className="topbar">
         <div>
           <p className="breadcrumb">Vertrieb / Auftragserfassung</p>
-          <h1>Neuer Auftrag</h1>
+          <h1>{order ? order.orderNumber : 'Neuer Auftrag'}</h1>
         </div>
         <div className="system-state"><span /> Entwicklung · Nordics</div>
       </header>
@@ -51,10 +126,19 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
 
       <section className="workspace">
         <div className="document">
-          <div className="document-head document-head-three">
+          <div className="document-head document-head-order">
             <label>
               Auftragsnummer
-              <input value={orderNumber} onChange={(event) => setOrderNumber(event.target.value)} disabled={Boolean(order)} />
+              <input
+                value={orderNumber}
+                placeholder="automatisch"
+                onChange={(event) => setOrderNumber(event.target.value)}
+                disabled={Boolean(order)}
+              />
+            </label>
+            <label>
+              Lager
+              <input value={warehouseCode} onChange={(event) => setWarehouseCode(event.target.value)} disabled={Boolean(order)} />
             </label>
             <label className="customer-field">
               Kunde
@@ -128,27 +212,59 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
 
         <aside className="summary">
           <div className="summary-heading">
-            <span className={`status ${order?.status === 'Released' ? 'released' : ''}`}>{order?.status === 'Released' ? 'Freigegeben' : order ? 'Gespeichert' : 'Entwurf'}</span>
-            <span>{orderNumber}</span>
+            <span className={statusClass(order?.status)}>{statusLabel(order?.status)}</span>
+            <span>{orderNumber.trim() || 'automatisch'}</span>
           </div>
           <dl>
             <div><dt>Warenwert</dt><dd>{euro(order?.netAmount ?? netAmount)}</dd></div>
             <div><dt>Rabatt</dt><dd>0,00 €</dd></div>
             <div className="total"><dt>Nettobetrag</dt><dd>{euro(order?.netAmount ?? netAmount)}</dd></div>
           </dl>
+          {(step === 'deliver' || step === 'invoice' || order?.status === 'Released') && (
+            <dl className="document-refs">
+              <div>
+                <dt>Lieferung</dt>
+                <dd>{deliveries[0]?.number ?? (documentsWaiting ? 'wird erzeugt …' : '—')}</dd>
+              </div>
+              <div>
+                <dt>Rechnung</dt>
+                <dd>{invoices[0]?.number ?? (documentsWaiting ? 'wird erzeugt …' : '—')}</dd>
+              </div>
+            </dl>
+          )}
           <div className="summary-actions">
             <p className="action-hint">{notice}</p>
             {step === 'capture' && !order && <button className="primary" onClick={saveOrder} disabled={busy}>{busy ? 'Speichert …' : 'Auftrag speichern'}</button>}
-            {(step === 'release' || (order && order.status !== 'Released')) && order?.status !== 'Released' && (
+            {(step === 'release' || (order && order.status !== 'Released')) && order?.status !== 'Released' && order?.status !== 'Cancelled' && (
               <button className="primary" onClick={releaseOrder} disabled={busy || !order}>
                 {order ? 'Auftrag freigeben' : 'Zuerst speichern'}
               </button>
             )}
+            {order && order.status !== 'Cancelled' && (
+              <button className="secondary" type="button" onClick={cancelOrder} disabled={busy}>Stornieren</button>
+            )}
             {order?.status === 'Released' && (
               <>
-                <p className="released-note">Bestand reserviert. Lieferung und Rechnung erzeugt der Worker im Hintergrund — in dieser Scheibe gibt es keine weiteren Masken.</p>
+                <p className="released-note">
+                  {documentsWaiting
+                    ? 'Bestand reserviert. Lieferung und Rechnung werden vom Worker erzeugt — die Nummern erscheinen hier automatisch.'
+                    : deliveries[0] && invoices[0]
+                      ? `Lieferung ${deliveries[0].number}, Rechnung ${invoices[0].number}.`
+                      : 'Bestand reserviert. Belege noch nicht verfügbar.'}
+                </p>
+                <button className="secondary" type="button" onClick={showOrderList}>Zur Auftragsliste</button>
+              </>
+            )}
+            {order?.status === 'Cancelled' && (
+              <>
+                <p className="released-note">Der Auftrag ist storniert. Eine Lieferung wird nicht erzeugt.</p>
                 <button className="secondary" type="button" onClick={startNewOrder}>Neuen Auftrag erfassen</button>
               </>
+            )}
+            {!order && (
+              <button className="secondary" type="button" onClick={showOrderList}>
+                Zur Auftragsliste
+              </button>
             )}
           </div>
           <div className="shortcuts">
@@ -162,7 +278,26 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
   )
 }
 
-function stepClass(id: SalesModel['step'], current: SalesModel['step'], order: SalesOrder | null) {
+function statusLabel(status?: string) {
+  if (status === 'Released') return 'Freigegeben'
+  if (status === 'Cancelled') return 'Storniert'
+  if (status) return 'Gespeichert'
+  return 'Entwurf'
+}
+
+function statusClass(status?: string) {
+  if (status === 'Released') return 'status released'
+  if (status === 'Cancelled') return 'status cancelled'
+  return 'status'
+}
+
+function formatCreatedAt(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+function stepClass(id: SalesModel['step'], current: SalesModel['step'], order: SalesModel['order']) {
   const released = order?.status === 'Released'
   const done = (id === 'capture' && Boolean(order))
     || (id === 'release' && released)

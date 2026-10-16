@@ -5,7 +5,8 @@ namespace Erp.Sales.Domain;
 public enum SalesOrderStatus
 {
     Draft = 0,
-    Released = 1
+    Released = 1,
+    Cancelled = 2
 }
 
 public sealed class SalesOrder : ITenantEntity
@@ -21,7 +22,8 @@ public sealed class SalesOrder : ITenantEntity
         Guid customerId,
         string orderNumber,
         Guid shipToAddressId,
-        AddressSnapshot shipTo)
+        AddressSnapshot shipTo,
+        string warehouseCode)
     {
         if (tenantId == Guid.Empty) throw new ArgumentException("Tenant is required.", nameof(tenantId));
         if (customerId == Guid.Empty) throw new ArgumentException("Customer is required.", nameof(customerId));
@@ -45,6 +47,7 @@ public sealed class SalesOrder : ITenantEntity
         ShipToCity = shipTo.City;
         ShipToCountryCode = shipTo.CountryCode;
         ShipToAdditionalLine = shipTo.AdditionalLine;
+        WarehouseCode = NormalizeWarehouse(warehouseCode);
         CreatedAt = DateTimeOffset.UtcNow;
     }
 
@@ -59,6 +62,7 @@ public sealed class SalesOrder : ITenantEntity
     public string ShipToCountryCode { get; private set; } = string.Empty;
     public string? ShipToAdditionalLine { get; private set; }
     public string OrderNumber { get; private set; } = string.Empty;
+    public string WarehouseCode { get; private set; } = string.Empty;
     public SalesOrderStatus Status { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? ReleasedAt { get; private set; }
@@ -73,8 +77,9 @@ public sealed class SalesOrder : ITenantEntity
         Guid customerId,
         string orderNumber,
         Guid shipToAddressId,
-        AddressSnapshot shipTo) =>
-        new(tenantId, customerId, orderNumber, shipToAddressId, shipTo);
+        AddressSnapshot shipTo,
+        string warehouseCode = "MAIN") =>
+        new(tenantId, customerId, orderNumber, shipToAddressId, shipTo, warehouseCode);
 
     public void AddLine(Guid articleId, string sku, decimal quantity, decimal unitPrice)
     {
@@ -84,6 +89,11 @@ public sealed class SalesOrder : ITenantEntity
 
     public SalesOrderReleased Release()
     {
+        if (Status == SalesOrderStatus.Cancelled)
+        {
+            throw new InvalidOperationException("Cancelled orders cannot be released.");
+        }
+
         EnsureDraft();
         if (_lines.Count == 0) throw new InvalidOperationException("An order requires at least one line.");
 
@@ -101,12 +111,44 @@ public sealed class SalesOrder : ITenantEntity
             _lines.Select(line => new ReleasedSalesOrderLine(line.ArticleId, line.Sku, line.Quantity)).ToArray());
     }
 
+    public SalesOrderCancelled Cancel()
+    {
+        if (Status == SalesOrderStatus.Cancelled)
+        {
+            throw new InvalidOperationException("Cancelled orders cannot be changed.");
+        }
+
+        Status = SalesOrderStatus.Cancelled;
+        var occurredAt = DateTimeOffset.UtcNow;
+        return new SalesOrderCancelled(
+            Guid.NewGuid(),
+            occurredAt,
+            TenantId,
+            Id,
+            OrderNumber,
+            WarehouseCode,
+            _lines.Select(line => new ReleasedSalesOrderLine(line.ArticleId, line.Sku, line.Quantity)).ToArray());
+    }
+
     private void EnsureDraft()
     {
         if (Status != SalesOrderStatus.Draft)
         {
             throw new InvalidOperationException("Released orders cannot be changed.");
         }
+    }
+
+    private static string NormalizeWarehouse(string warehouseCode)
+    {
+        var normalized = string.IsNullOrWhiteSpace(warehouseCode)
+            ? "MAIN"
+            : warehouseCode.Trim().ToUpperInvariant();
+        if (normalized.Length > 40)
+        {
+            throw new ArgumentException("Warehouse code is too long.", nameof(warehouseCode));
+        }
+
+        return normalized;
     }
 }
 
@@ -157,6 +199,15 @@ public sealed class SalesOrderLine : ITenantEntity
 }
 
 public sealed record ReleasedSalesOrderLine(Guid ArticleId, string Sku, decimal Quantity);
+
+public sealed record SalesOrderCancelled(
+    Guid EventId,
+    DateTimeOffset OccurredAt,
+    Guid TenantId,
+    Guid SalesOrderId,
+    string SalesOrderNumber,
+    string WarehouseCode,
+    IReadOnlyCollection<ReleasedSalesOrderLine> Lines) : IDomainEvent;
 
 public sealed record SalesOrderReleased(
     Guid EventId,

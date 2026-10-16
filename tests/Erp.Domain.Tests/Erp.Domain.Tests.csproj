@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\src\Modules\Erp.Inventory\Erp.Inventory.csproj" />
     <ProjectReference Include="..\..\src\Modules\Erp.Sales\Erp.Sales.csproj" />
     <ProjectReference Include="..\..\src\Modules\Erp.Billing\Erp.Billing.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Erp.Platform\Erp.Platform.csproj" />
   </ItemGroup>
 
 </Project>

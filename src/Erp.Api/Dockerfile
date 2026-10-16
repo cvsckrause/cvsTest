@@ -1,6 +1,6 @@
 FROM node:22-alpine AS web
 WORKDIR /web
-COPY src/erp-web/package.json src/erp-web/package-lock.json ./
+COPY src/erp-web/package.json src/erp-web/package-lock.json src/erp-web/.npmrc ./
 RUN npm ci
 COPY src/erp-web/ ./
 # Pass at docker build: --build-arg VITE_APP_GIT_SHA=$(git rev-parse --short HEAD)
