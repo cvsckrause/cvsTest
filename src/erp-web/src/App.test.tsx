@@ -379,6 +379,7 @@ test('keeps a released order when cancel is rejected', async () => {
 
   render(<App />)
   expect(await screen.findByText('Freigegeben')).toBeInTheDocument()
+  expect((await screen.findAllByText('Lieferung DEL-SO-1001 und Rechnung R-1 liegen vor.')).length).toBeGreaterThan(0)
   fireEvent.click(screen.getByRole('button', { name: 'Stornieren' }))
 
   expect((await screen.findAllByText('Delivered orders cannot be cancelled.')).length).toBeGreaterThan(0)
