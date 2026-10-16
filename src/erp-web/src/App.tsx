@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import './App.css'
+import { useShellAuth } from './shellAuth'
 import { getBuildInfo } from './buildInfo'
 import { useMasterData } from './master-data'
 import { useRoute } from './route'
@@ -13,8 +14,74 @@ import { StammWorkspace } from './workspaces/StammWorkspace'
 
 const buildInfo = getBuildInfo()
 
+function withoutDocument(route: AppRoute): AppRoute {
+  if (route.workspace === 'stamm') return { workspace: 'stamm', tab: route.tab, documentId: null }
+  if (route.workspace === 'lager') return { workspace: 'lager' }
+  return { workspace: 'sales', documentId: null }
+}
+
+function TenantStatus({
+  route,
+  navigate,
+  clearStammDocument,
+}: {
+  route: AppRoute
+  navigate: (next: AppRoute, mode?: 'push' | 'replace') => void
+  clearStammDocument: () => void
+}) {
+  const shell = useShellAuth()
+
+  function switchTenant(tenantId: string) {
+    if (shell === null || tenantId === shell.tenantId) return
+    shell.switchTenant(tenantId)
+    navigate(withoutDocument(route), 'replace')
+    clearStammDocument()
+  }
+
+  if (shell === null) return <span>Mandant 100 · Hauptlager MAIN</span>
+  if (shell.memberships.length <= 1) return <span>{shell.tenantId}</span>
+  return (
+    <select
+      className="tenant-select"
+      aria-label="Mandant wechseln"
+      value={shell.tenantId}
+      onChange={(event) => switchTenant(event.target.value)}
+    >
+      {shell.memberships.map((membership) => (
+        <option key={membership.tenantId} value={membership.tenantId}>
+          {membership.tenantId}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 function App() {
-  const { route, navigate, lastStamm } = useRoute()
+  const { route, navigate, lastStamm, clearStammDocument } = useRoute()
+  const shell = useShellAuth()
+
+  return (
+    <Workspace
+      key={shell?.tenantId ?? 'local'}
+      route={route}
+      navigate={navigate}
+      lastStamm={lastStamm}
+      clearStammDocument={clearStammDocument}
+    />
+  )
+}
+
+function Workspace({
+  route,
+  navigate,
+  lastStamm,
+  clearStammDocument,
+}: {
+  route: AppRoute
+  navigate: (next: AppRoute, mode?: 'push' | 'replace') => void
+  lastStamm: Extract<AppRoute, { workspace: 'stamm' }>
+  clearStammDocument: () => void
+}) {
   const [notice, setNotice] = useState('Stammdaten werden geladen …')
   const [busy, setBusy] = useState(false)
   const master = useMasterData(setNotice)
@@ -99,7 +166,7 @@ function App() {
         <footer className="statusbar" aria-live="polite">
           <span>{notice}</span>
           <span className="statusbar-meta">
-            <span>Mandant 100 · Hauptlager MAIN</span>
+            <TenantStatus route={route} navigate={navigate} clearStammDocument={clearStammDocument} />
             <span className="build-stamp" title="Build identity" aria-label={`Build ${buildInfo.label}`}>
               {buildInfo.label}
             </span>

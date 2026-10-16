@@ -641,6 +641,17 @@ kbd {
   align-items: center;
   gap: 14px;
   flex-shrink: 0;
+  min-width: 0;
+}
+
+.tenant-select {
+  max-width: min(280px, 46vw);
+  padding: 2px 4px;
+  border: 1px solid #c6d0d8;
+  border-radius: 3px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
 }
 
 .build-stamp {
