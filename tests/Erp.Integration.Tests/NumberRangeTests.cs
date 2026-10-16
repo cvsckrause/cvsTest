@@ -27,6 +27,19 @@ public sealed class NumberRangeTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task First_invoices_of_a_new_tenant_are_r_1_and_r_2()
+    {
+        var tenantId = Guid.NewGuid();
+        var at = new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero);
+
+        var first = await AllocateAsync(tenantId, NumberDocumentType.Invoice, at, commit: true);
+        var second = await AllocateAsync(tenantId, NumberDocumentType.Invoice, at, commit: true);
+
+        Assert.Equal("R-1", first);
+        Assert.Equal("R-2", second);
+    }
+
+    [Fact]
     public async Task Rolled_back_allocation_does_not_consume_a_number()
     {
         var at = new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero);
@@ -35,7 +48,7 @@ public sealed class NumberRangeTests(PostgresFixture fixture)
         var second = await AllocateAsync(fixture.TenantB, NumberDocumentType.Invoice, at, commit: false);
 
         Assert.Equal(first, second);
-        Assert.Matches(@"^\d+$", first);
+        Assert.Matches(@"^R-\d+$", first);
     }
 
     [Fact]
@@ -63,9 +76,9 @@ public sealed class NumberRangeTests(PostgresFixture fixture)
             db, fixture.TenantB, NumberDocumentType.Invoice, new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero), CancellationToken.None);
         await transaction.RollbackAsync();
 
-        Assert.Matches(@"^\d+$", june);
-        Assert.Equal(long.Parse(june) + 1, long.Parse(july));
-        Assert.Equal("1", nextYear);
+        Assert.Matches(@"^R-\d+$", june);
+        Assert.Equal(long.Parse(june[2..]) + 1, long.Parse(july[2..]));
+        Assert.Equal("R-1", nextYear);
     }
 
     [Fact]
