@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import './App.css'
-import { useShellAuth } from './shellAuth'
+import { erpApi } from './api'
+import type { Session } from './api'
+import { mandantLabel, useShellAuth } from './shellAuth'
 import { getBuildInfo } from './buildInfo'
 import { useMasterData } from './master-data'
 import { useRoute } from './route'
@@ -30,6 +32,22 @@ function TenantStatus({
   clearStammDocument: () => void
 }) {
   const shell = useShellAuth()
+  const [session, setSession] = useState<Session | null | undefined>(undefined)
+
+  useEffect(() => {
+    let cancelled = false
+    erpApi
+      .session()
+      .then((next) => {
+        if (!cancelled) setSession(next)
+      })
+      .catch(() => {
+        if (!cancelled) setSession(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   function switchTenant(tenantId: string) {
     if (shell === null || tenantId === shell.tenantId) return
@@ -38,8 +56,11 @@ function TenantStatus({
     clearStammDocument()
   }
 
-  if (shell === null) return <span>Mandant 100 · Hauptlager MAIN</span>
-  if (shell.memberships.length <= 1) return <span>{shell.tenantId}</span>
+  if (shell === null || shell.memberships.length <= 1) {
+    if (session === undefined) return <span>Mandant …</span>
+    if (session === null) return <span>Mandant –</span>
+    return <span>{mandantLabel(session)}</span>
+  }
   return (
     <select
       className="tenant-select"
@@ -49,7 +70,7 @@ function TenantStatus({
     >
       {shell.memberships.map((membership) => (
         <option key={membership.tenantId} value={membership.tenantId}>
-          {membership.tenantId}
+          {mandantLabel(membership)}
         </option>
       ))}
     </select>

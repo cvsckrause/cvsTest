@@ -40,6 +40,7 @@ builder.Services.AddCors(options =>
         .AllowAnyMethod()));
 builder.Services.AddSingleton(new ErpConnection(connectionString));
 builder.Services.AddScoped<ITenantMemberships, EfTenantMemberships>();
+builder.Services.AddScoped<IMandantDirectory, EfMandantDirectory>();
 builder.Services.AddScoped<RequestTenantContext>();
 builder.Services.AddScoped<ITenantContext>(services => services.GetRequiredService<RequestTenantContext>());
 builder.Services.AddDbContext<ErpDbContext>((services, options) => options
@@ -228,6 +229,7 @@ api.MapMasterDataEndpoints();
 api.MapInventoryEndpoints();
 api.MapSalesEndpoints();
 api.MapMembershipEndpoints();
+api.MapSessionEndpoints();
 
 app.MapFallbackToFile("index.html");
 app.Run();

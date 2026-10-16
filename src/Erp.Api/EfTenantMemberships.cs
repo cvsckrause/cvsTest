@@ -13,7 +13,17 @@ internal interface ITenantMemberships
     Task EnsureDefaultAsync(string userId, Guid tenantId, CancellationToken cancellationToken);
 }
 
-internal sealed record ErpConnection(string Value);
+internal sealed record ErpConnection(string Value)
+{
+    // Registry tables are read before a tenant is verified, so this context skips the tenant interceptor.
+    public ErpDbContext OpenRegistry(string purpose)
+    {
+        var options = new DbContextOptionsBuilder<ErpDbContext>()
+            .UseNpgsql(Value)
+            .Options;
+        return new ErpDbContext(options, new TenantContext(Guid.Empty, purpose));
+    }
+}
 
 internal sealed class EfTenantMemberships(ErpConnection connection) : ITenantMemberships
 {
@@ -45,11 +55,5 @@ internal sealed class EfTenantMemberships(ErpConnection connection) : ITenantMem
         }
     }
 
-    private ErpDbContext Create()
-    {
-        var options = new DbContextOptionsBuilder<ErpDbContext>()
-            .UseNpgsql(connection.Value)
-            .Options;
-        return new ErpDbContext(options, new TenantContext(Guid.Empty, "membership"));
-    }
+    private ErpDbContext Create() => connection.OpenRegistry("membership");
 }
