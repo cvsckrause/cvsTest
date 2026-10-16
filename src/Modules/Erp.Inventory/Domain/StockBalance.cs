@@ -55,4 +55,13 @@ public sealed class StockBalance : ITenantEntity
 
         OnHand += quantity;
     }
+
+    public void Issue(decimal quantity)
+    {
+        if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity));
+        if (quantity > Reserved) throw new InvalidOperationException("Cannot issue more than reserved stock.");
+
+        OnHand -= quantity;
+        Reserved -= quantity;
+    }
 }

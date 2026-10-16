@@ -109,8 +109,68 @@ public sealed class SalesOrderCancellationTests(PostgresFixture fixture)
         Assert.Equal(1, await fixture.Probe.CountDeliveriesAsync(fixture.TenantA, $"DEL-{orderNumber}"));
         Assert.Equal(HttpStatusCode.Conflict, cancel.Status);
         Assert.Contains("Delivered orders cannot be cancelled.", cancel.Body, StringComparison.Ordinal);
-        Assert.Equal(10m, stock.OnHand);
-        Assert.Equal(3m, stock.Reserved);
+        Assert.Equal(7m, stock.OnHand);
+        Assert.Equal(0m, stock.Reserved);
+    }
+
+    [Fact]
+    public async Task Worker_issues_reserved_stock_when_it_creates_the_delivery()
+    {
+        using var api = fixture.OpenSession(fixture.TenantA);
+        var graph = await CreateGraphAsync(api, "ISS", "MAIN");
+        var orderNumber = OrderNumber("ISS");
+        var created = await api.PostOkAsync(
+            "/api/v1/sales-orders",
+            OrderBody(graph, orderNumber, 3m, "MAIN"),
+            Key());
+        await api.PostOkAsync($"/api/v1/sales-orders/{created.Id}/release", new { }, Key());
+        var releasedId = await fixture.Probe.OutboxIdForOrderEventAsync(
+            fixture.TenantA, created.Id, "erp.sales-order.released.v1");
+        await ProcessUntilAsync(fixture, releasedId);
+
+        var stock = await StockAsync(api, graph.ArticleId, "MAIN");
+        var deliveryNumber = $"DEL-{orderNumber}";
+
+        Assert.Equal(7m, stock.OnHand);
+        Assert.Equal(0m, stock.Reserved);
+        Assert.Equal(1, await fixture.Probe.CountDeliveriesAsync(fixture.TenantA, deliveryNumber));
+        Assert.Equal(1, await fixture.Probe.CountMovementsAsync(fixture.TenantA, deliveryNumber));
+        Assert.Equal(1, CountIssueMovements(await api.GetAsync("/api/v1/stock/movements?limit=50"), deliveryNumber));
+    }
+
+    [Fact]
+    public async Task Worker_issues_each_line_of_a_delivery()
+    {
+        using var api = fixture.OpenSession(fixture.TenantA);
+        var graph = await CreateGraphAsync(api, "ISL", "MAIN");
+        var orderNumber = OrderNumber("ISL");
+        var created = await api.PostOkAsync(
+            "/api/v1/sales-orders",
+            new
+            {
+                customerId = graph.CustomerId,
+                shipToAddressId = graph.AddressId,
+                orderNumber,
+                warehouseCode = "MAIN",
+                lines = new[]
+                {
+                    new { articleId = graph.ArticleId, quantity = 2m },
+                    new { articleId = graph.ArticleId, quantity = 1m }
+                }
+            },
+            Key());
+        await api.PostOkAsync($"/api/v1/sales-orders/{created.Id}/release", new { }, Key());
+        var releasedId = await fixture.Probe.OutboxIdForOrderEventAsync(
+            fixture.TenantA, created.Id, "erp.sales-order.released.v1");
+        await ProcessUntilAsync(fixture, releasedId);
+
+        var stock = await StockAsync(api, graph.ArticleId, "MAIN");
+        var deliveryNumber = $"DEL-{orderNumber}";
+
+        Assert.Equal(7m, stock.OnHand);
+        Assert.Equal(0m, stock.Reserved);
+        Assert.Equal(2, await fixture.Probe.CountMovementsAsync(fixture.TenantA, deliveryNumber));
+        Assert.Equal(2, CountIssueMovements(await api.GetAsync("/api/v1/stock/movements?limit=50"), deliveryNumber));
     }
 
     [Fact]
@@ -133,6 +193,10 @@ public sealed class SalesOrderCancellationTests(PostgresFixture fixture)
         Assert.Equal(0, await fixture.Probe.CountInvoicesAsync(fixture.TenantA, $"INV-{orderNumber}"));
         Assert.True(await fixture.Probe.OutboxProcessedAsync(fixture.TenantA, releasedId));
         Assert.Equal(1, await fixture.Probe.CountInboxAsync(releasedId));
+        var stock = await StockAsync(api, graph.ArticleId, "MAIN");
+        Assert.Equal(10m, stock.OnHand);
+        Assert.Equal(0m, stock.Reserved);
+        Assert.Equal(0, await fixture.Probe.CountMovementsAsync(fixture.TenantA, $"DEL-{orderNumber}"));
     }
 
     [Fact]
@@ -253,6 +317,22 @@ public sealed class SalesOrderCancellationTests(PostgresFixture fixture)
         {
             await OutboxProcessor.ProcessOnceAsync(fixture.WorkerConnectionString);
         }
+    }
+
+    private static int CountIssueMovements(ApiResult result, string reference)
+    {
+        using var document = JsonDocument.Parse(result.Body);
+        var count = 0;
+        foreach (var item in document.RootElement.EnumerateArray())
+        {
+            if (item.GetProperty("movementType").GetString() == "GoodsIssue"
+                && item.GetProperty("reference").GetString() == reference)
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     private static string Text(ApiResult result, string name)
