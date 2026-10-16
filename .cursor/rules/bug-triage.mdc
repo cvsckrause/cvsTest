@@ -1,0 +1,18 @@
+---
+description: Short /bug trigger → reproduce, open GitHub bug on lane:A
+alwaysApply: true
+---
+
+# Bug triage shortcut
+
+When Christian prefixes a report with `/bug` or says "file this bug" / "log this bug":
+
+1. Investigate and reproduce (or confirm from the cited code/path) before filing.
+2. Create a GitHub issue with `gh issue create`:
+   - label: `bug`
+   - label: `lane:A`
+   - body: summary, repro steps, expected vs actual, relevant files/paths
+3. Do not ask him to restate labels, assignee lane, or "please create an issue".
+4. Reply with the issue URL (and short repro notes).
+
+If he is clearly asking only for diagnosis ("why does…?") without `/bug` / "file this bug", do **not** auto-create an issue.
