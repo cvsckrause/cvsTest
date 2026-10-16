@@ -230,7 +230,7 @@ internal sealed class DatabaseProbe(string appConnectionString, string adminConn
             return values;
         });
 
-        return numbers.Select(long.Parse).OrderBy(value => value).ToArray();
+        return numbers.Select(InvoiceValue).OrderBy(value => value).ToArray();
     }
 
     public Task<IReadOnlyList<long>> InvoiceSequenceAsync(Guid tenantId) =>
@@ -246,7 +246,7 @@ internal sealed class DatabaseProbe(string appConnectionString, string adminConn
             command.Parameters.AddWithValue("tenant", tenantId);
             var values = new List<long>();
             await using var reader = await command.ExecuteReaderAsync();
-            while (await reader.ReadAsync()) values.Add(long.Parse(reader.GetString(0)));
+            while (await reader.ReadAsync()) values.Add(InvoiceValue(reader.GetString(0)));
             values.Sort();
             return (IReadOnlyList<long>)values;
         });
@@ -378,6 +378,14 @@ internal sealed class DatabaseProbe(string appConnectionString, string adminConn
             connection);
         command.Parameters.AddWithValue("id", messageId);
         return (int)(await command.ExecuteScalarAsync() ?? 0);
+    }
+
+    private static long InvoiceValue(string number)
+    {
+        var match = Regex.Match(number, @"^R-(\d+)$");
+        return match.Success
+            ? long.Parse(match.Groups[1].Value)
+            : throw new InvalidOperationException($"Invoice number '{number}' is not R-<digits>.");
     }
 
     private Task<int> CountByNumberAsync(Guid tenantId, string table, string number)

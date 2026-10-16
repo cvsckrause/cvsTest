@@ -16,7 +16,7 @@ public static class NumberRangePolicy
     {
         NumberDocumentType.SalesOrder => ("AU-", false),
         NumberDocumentType.Delivery => ("LS-", false),
-        NumberDocumentType.Invoice => ("", false),
+        NumberDocumentType.Invoice => ("R-", false),
         _ => throw new ArgumentOutOfRangeException(nameof(documentType))
     };
 

@@ -64,7 +64,7 @@ public sealed class SalesOrderReadTests(PostgresFixture fixture)
         var invoices = await owner.GetAsync($"/api/v1/sales-orders/{order.Id}/invoices");
         Assert.Equal(HttpStatusCode.OK, invoices.Status);
         using var invoiceDoc = JsonDocument.Parse(invoices.Body);
-        Assert.Matches(@"^\d+$", invoiceDoc.RootElement[0].GetProperty("number").GetString());
+        Assert.Matches(@"^R-\d+$", invoiceDoc.RootElement[0].GetProperty("number").GetString());
         var invoiceId = invoiceDoc.RootElement[0].GetProperty("id").GetGuid();
 
         var invoice = await owner.GetAsync($"/api/v1/invoices/{invoiceId}");
