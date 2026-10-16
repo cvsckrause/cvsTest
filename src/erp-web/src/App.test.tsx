@@ -527,6 +527,15 @@ test('asks for a bill-to address when the customer has several and sends the cho
   await screen.findByRole('option', { name: '10000 · Nordrad GmbH' })
   const billTo = await screen.findByLabelText('Rechnungsadresse')
   expect(billTo).toHaveValue('')
+  expect(within(billTo).getAllByRole('option').map((option) => option.textContent)).toEqual([
+    'Rechnungsadresse wählen',
+    'Nordrad GmbH · Hafenstraße 12, 20095 Hamburg',
+    'Nordrad Buchhaltung · Kontorweg 3, 20457 Hamburg',
+  ])
+  expect(within(screen.getByLabelText('Lieferadresse')).getAllByRole('option').map((option) => option.textContent)).toEqual([
+    'Adresse wählen',
+    'Nordrad GmbH · 20095 Hamburg',
+  ])
   fireEvent.click(screen.getByRole('button', { name: 'Position hinzufügen' }))
   fireEvent.click(screen.getByRole('button', { name: 'Auftrag speichern' }))
 
@@ -588,6 +597,35 @@ test('points to the Firma tab when a release is refused for missing seller detai
   fireEvent.click(within(warning).getByRole('button', { name: 'Firmendaten ergänzen' }))
   expect(await screen.findByRole('heading', { name: 'Firmendaten für Rechnungen' })).toBeInTheDocument()
   expect(window.location.pathname).toBe('/stamm/firma')
+})
+
+test('drops the seller warning once a release fails for another reason or succeeds', async () => {
+  window.history.replaceState(null, '', '/sales/order-1')
+  const releaseReplies = [
+    jsonResponse({ error: 'Seller details are incomplete.', missingSellerFields: ['street'] }, false, 409),
+    jsonResponse({ error: 'Insufficient stock for article BIKE-001.', missingSellerFields: [] }, false, 409),
+    jsonResponse(salesOrder),
+  ]
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url.includes('/release') && init?.method === 'POST') return releaseReplies.shift()
+    if (url.includes('/sales-orders/') && !url.includes('/deliveries') && !url.includes('/invoices')) {
+      return jsonResponse({ ...salesOrder, status: 'Draft' })
+    }
+    return route(url)
+  }))
+
+  render(<App />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Auftrag freigeben' }))
+  expect(await screen.findByRole('alert')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Auftrag freigeben' }))
+  expect((await screen.findAllByText('Insufficient stock for article BIKE-001.')).length).toBeGreaterThan(0)
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Auftrag freigeben' }))
+  expect((await screen.findAllByText(/Auftrag SO-1001 freigegeben/)).length).toBeGreaterThan(0)
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })
 
 test('cancels a released order and offers a new one', async () => {

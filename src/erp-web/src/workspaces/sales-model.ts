@@ -354,8 +354,9 @@ export function useSalesWorkspace({
       setNotice(`Auftrag ${released.orderNumber} freigegeben. Warte auf Lieferung und Rechnung …`)
       void refreshOrderList()
     } catch (error) {
-      if (error instanceof ApiError && error.missingSellerFields.length > 0) {
-        setSellerIncomplete(true)
+      const sellerRefused = error instanceof ApiError && error.missingSellerFields.length > 0
+      setSellerIncomplete(sellerRefused)
+      if (sellerRefused) {
         setNotice('Firmendaten unvollständig. Unter Stammdaten › Firma ergänzen, dann erneut freigeben.')
       } else {
         setNotice(error instanceof Error ? error.message : 'Freigabe fehlgeschlagen.')
@@ -428,6 +429,7 @@ export function useSalesWorkspace({
   }
 
   function showFirma() {
+    setSellerIncomplete(false)
     navigate({ workspace: 'stamm', tab: 'firma', documentId: null })
   }
 

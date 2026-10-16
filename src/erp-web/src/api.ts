@@ -130,10 +130,7 @@ export const erpApi = {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
-  customerAddresses: (customerId: string, role?: string) =>
-    request<CustomerAddress[]>(
-      `/customers/${customerId}/addresses${role ? `?role=${encodeURIComponent(role)}` : ''}`,
-    ),
+  customerAddresses: (customerId: string) => request<CustomerAddress[]>(`/customers/${customerId}/addresses`),
   linkCustomerAddress: (customerId: string, addressId: string, role: string) =>
     request<CustomerAddress>(`/customers/${customerId}/addresses`, {
       method: 'POST',
