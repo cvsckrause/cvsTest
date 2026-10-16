@@ -50,6 +50,33 @@ public sealed class Mandant
         return new Mandant(id, number, RequireFirmenname(firmenname), MandantStatus.Active, now);
     }
 
+    // The number comes from erp.mandant_number_seq when the row is inserted.
+    public static Mandant Register(string firmenname, string approvalTokenHash, DateTimeOffset expiresAt, DateTimeOffset now)
+    {
+        if (string.IsNullOrWhiteSpace(approvalTokenHash))
+        {
+            throw new ArgumentException("Approval token is required.", nameof(approvalTokenHash));
+        }
+
+        if (expiresAt <= now) throw new ArgumentException("Approval must expire in the future.", nameof(expiresAt));
+        return new Mandant(Guid.NewGuid(), 0, RequireFirmenname(firmenname), MandantStatus.Pending, now)
+        {
+            ApprovalTokenHash = approvalTokenHash,
+            ApprovalExpiresAt = expiresAt,
+        };
+    }
+
+    public bool ApprovalExpired(DateTimeOffset now) =>
+        Status == MandantStatus.Pending && ApprovalExpiresAt is DateTimeOffset expiresAt && expiresAt <= now;
+
+    public void Activate(DateTimeOffset now)
+    {
+        if (Status == MandantStatus.Active) return;
+        if (ApprovalExpired(now)) throw new InvalidOperationException("The approval link has expired.");
+        Status = MandantStatus.Active;
+        ActivatedAt = now;
+    }
+
     public static string RequireFirmenname(string firmenname)
     {
         var trimmed = firmenname?.Trim() ?? string.Empty;
@@ -88,6 +115,14 @@ public sealed class MandantUser
     public string Email { get; private set; } = string.Empty;
     public string? CognitoSub { get; private set; }
 
+    public string LoginName(long mandantNumber) => $"{mandantNumber}.{UserName}";
+
+    public void LinkCognito(string subject)
+    {
+        if (string.IsNullOrWhiteSpace(subject)) throw new ArgumentException("Cognito subject is required.", nameof(subject));
+        CognitoSub = subject.Trim();
+    }
+
     public static MandantUser Create(Guid mandantId, string userName, string email)
     {
         if (mandantId == Guid.Empty) throw new ArgumentException("Mandant is required.", nameof(mandantId));
@@ -98,6 +133,11 @@ public sealed class MandantUser
         if (mail.Length > EmailMaxLength)
         {
             throw new ArgumentException($"Email must be at most {EmailMaxLength} characters.", nameof(email));
+        }
+
+        if (!System.Net.Mail.MailAddress.TryCreate(mail, out var parsed) || parsed.Address != mail)
+        {
+            throw new ArgumentException("Email is not a valid address.", nameof(email));
         }
 
         return new MandantUser(mandantId, name, mail);

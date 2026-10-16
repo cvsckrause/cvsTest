@@ -336,7 +336,8 @@ internal sealed class ApiFixture : IAsyncDisposable
         IReadOnlyList<TenantMembership>? memberships = null,
         string? tenantHeader = null,
         Guid? bootstrapTenantId = null,
-        IReadOnlyList<MandantSummary>? mandanten = null)
+        IReadOnlyList<MandantSummary>? mandanten = null,
+        int? registrationPermits = null)
     {
         var observed = new ObservedTenant();
         var factory = CreateFactory(
@@ -349,7 +350,8 @@ internal sealed class ApiFixture : IAsyncDisposable
             observed,
             memberships,
             bootstrapTenantId,
-            mandanten);
+            mandanten,
+            registrationPermits);
         return new ApiFixture(factory, observed, tenantHeader);
     }
 
@@ -363,9 +365,11 @@ internal sealed class ApiFixture : IAsyncDisposable
         ObservedTenant? observed = null,
         IReadOnlyList<TenantMembership>? memberships = null,
         Guid? bootstrapTenantId = null,
-        IReadOnlyList<MandantSummary>? mandanten = null)
+        IReadOnlyList<MandantSummary>? mandanten = null,
+        int? registrationPermits = null)
     {
         observed ??= new ObservedTenant();
+        Environment.SetEnvironmentVariable("Registration__PermitsPerHour", registrationPermits?.ToString());
         user ??= new ClaimsPrincipal(new ClaimsIdentity());
         Environment.SetEnvironmentVariable(
             "ConnectionStrings__Erp",

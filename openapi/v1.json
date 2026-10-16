@@ -74,6 +74,37 @@
         ],
         "type": "object"
       },
+      "ApprovalRequest": {
+        "properties": {
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "type": "object"
+      },
+      "ApprovalResponse": {
+        "properties": {
+          "alreadyApproved": {
+            "type": "boolean"
+          },
+          "mandantNumber": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "mandantNumber",
+          "alreadyApproved"
+        ],
+        "type": "object"
+      },
       "ArticleResponse": {
         "properties": {
           "id": {
@@ -471,6 +502,32 @@
           "isDefault",
           "mandantNumber",
           "firmenname"
+        ],
+        "type": "object"
+      },
+      "RegistrationAcceptedResponse": {
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "RegistrationRequest": {
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "firmenname": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "firmenname",
+          "email"
         ],
         "type": "object"
       },
@@ -1349,6 +1406,64 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MembershipListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Erp.Api"
+        ]
+      }
+    },
+    "/api/v1/registrations": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationAcceptedResponse"
+                }
+              }
+            },
+            "description": "Accepted"
+          }
+        },
+        "tags": [
+          "Erp.Api"
+        ]
+      }
+    },
+    "/api/v1/registrations/approve": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalResponse"
                 }
               }
             },

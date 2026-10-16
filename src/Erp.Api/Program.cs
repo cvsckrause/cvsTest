@@ -1,9 +1,13 @@
+using System.Threading.RateLimiting;
 using Erp.Api;
+using Erp.Api.Registration;
 using Erp.BuildingBlocks;
 using Erp.Observability;
 using Erp.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
@@ -41,6 +45,40 @@ builder.Services.AddCors(options =>
 builder.Services.AddSingleton(new ErpConnection(connectionString));
 builder.Services.AddScoped<ITenantMemberships, EfTenantMemberships>();
 builder.Services.AddScoped<IMandantDirectory, EfMandantDirectory>();
+builder.Services.Configure<RegistrationOptions>(builder.Configuration.GetSection(RegistrationOptions.Section));
+builder.Services.TryAddSingleton(TimeProvider.System);
+builder.Services.AddScoped<MandantRegistration>();
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddSingleton<IMailSender, DevelopmentMailSender>();
+}
+else
+{
+    builder.Services.AddSingleton<IMailSender, UnconfiguredMailSender>();
+}
+
+if (authenticationEnabled)
+{
+    builder.Services.AddSingleton<ICognitoUserAdmin, UnconfiguredCognitoUserAdmin>();
+}
+else
+{
+    builder.Services.AddSingleton<ICognitoUserAdmin, LocalCognitoUserAdmin>();
+}
+
+var registrationPermits = builder.Configuration.GetValue<int?>("Registration:PermitsPerHour") ?? 10;
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(RegistrationOptions.RateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = registrationPermits,
+            Window = TimeSpan.FromHours(1),
+            QueueLimit = 0,
+        }));
+});
 builder.Services.AddScoped<RequestTenantContext>();
 builder.Services.AddScoped<ITenantContext>(services => services.GetRequiredService<RequestTenantContext>());
 builder.Services.AddDbContext<ErpDbContext>((services, options) => options
@@ -122,9 +160,11 @@ if (authenticationEnabled)
     app.UseAuthentication();
     app.UseAuthorization();
 }
+app.UseRateLimiter();
 app.Use(async (context, next) =>
 {
-    if (!context.Request.Path.StartsWithSegments("/api"))
+    if (!context.Request.Path.StartsWithSegments("/api")
+        || context.GetEndpoint()?.Metadata.GetMetadata<IAllowAnonymous>() is not null)
     {
         await next();
         return;
@@ -230,6 +270,7 @@ api.MapInventoryEndpoints();
 api.MapSalesEndpoints();
 api.MapMembershipEndpoints();
 api.MapSessionEndpoints();
+api.MapRegistrationEndpoints();
 
 app.MapFallbackToFile("index.html");
 app.Run();
