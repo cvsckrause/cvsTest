@@ -1198,9 +1198,13 @@ export interface components {
         SalesOrderLineResponse: {
             /** Format: uuid */
             articleId: string;
+            description: string;
+            /** Format: double */
+            netAmount: number | string;
             /** Format: double */
             quantity: number | string;
             sku: string;
+            taxCode: string;
             /** Format: double */
             unitPrice: number | string;
         };

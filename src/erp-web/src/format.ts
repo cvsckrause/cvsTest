@@ -13,6 +13,13 @@ export function euro(value: number) {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value)
 }
 
+/** Commercial rounding to cents (half away from zero), matching the server's Money.Round. */
+export function roundCents(value: number) {
+  // toPrecision strips binary noise such as 1.005 * 100 = 100.49999999999999.
+  const scaled = Number((Math.abs(value) * 100).toPrecision(15))
+  return (Math.sign(value) * Math.round(scaled)) / 100
+}
+
 export function qty(value: number) {
   return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 4 }).format(value)
 }

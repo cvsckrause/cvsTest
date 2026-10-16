@@ -712,6 +712,14 @@ namespace Erp.Persistence.Migrations
                     b.Property<Guid>("ArticleId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
                     b.Property<decimal>("Quantity")
                         .HasPrecision(18, 4)
                         .HasColumnType("numeric(18,4)");
@@ -724,6 +732,13 @@ namespace Erp.Persistence.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
 
+                    b.Property<string>("TaxCode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Standard19");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -735,7 +750,8 @@ namespace Erp.Persistence.Migrations
 
                     b.HasIndex("SalesOrderId");
 
-                    b.HasIndex("TenantId", "SalesOrderId");
+                    b.HasIndex("TenantId", "SalesOrderId", "Position")
+                        .IsUnique();
 
                     b.ToTable("sales_order_lines", "erp");
                 });

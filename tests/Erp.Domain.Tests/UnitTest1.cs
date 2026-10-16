@@ -19,7 +19,7 @@ public sealed class TradingFlowTests
     public void Releasing_order_emits_stable_event_and_locks_order()
     {
         var order = SalesOrder.Create(TenantId, CustomerId, "SO-10001", ShipToAddressId, SampleShipTo);
-        order.AddLine(ArticleId, "BIKE-001", 2, 799m);
+        order.AddLine(ArticleId, "BIKE-001", "Cityrad", TaxCode.Standard19, 2, 799m);
 
         var released = order.Release();
 
@@ -29,14 +29,14 @@ public sealed class TradingFlowTests
         Assert.Equal("SO-10001", released.SalesOrderNumber);
         Assert.Equal(1598m, order.NetAmount);
         Assert.Equal(SampleShipTo, released.ShipTo);
-        Assert.Throws<InvalidOperationException>(() => order.AddLine(ArticleId, "BIKE-001", 1, 799m));
+        Assert.Throws<InvalidOperationException>(() => order.AddLine(ArticleId, "BIKE-001", "Cityrad", TaxCode.Standard19, 1, 799m));
     }
 
     [Fact]
     public void Releasing_order_twice_is_rejected()
     {
         var order = SalesOrder.Create(TenantId, CustomerId, "SO-10002", ShipToAddressId, SampleShipTo);
-        order.AddLine(ArticleId, "BIKE-001", 1, 799m);
+        order.AddLine(ArticleId, "BIKE-001", "Cityrad", TaxCode.Standard19, 1, 799m);
         order.Release();
 
         Assert.Throws<InvalidOperationException>(() => order.Release());
@@ -56,7 +56,7 @@ public sealed class TradingFlowTests
     {
         var address = Address.Create(TenantId, "Nordrad GmbH", "Hafenstraße 12", "20095", "Hamburg");
         var order = SalesOrder.Create(TenantId, CustomerId, "SO-10005", address.Id, address.ToSnapshot());
-        order.AddLine(ArticleId, "BIKE-001", 1, 799m);
+        order.AddLine(ArticleId, "BIKE-001", "Cityrad", TaxCode.Standard19, 1, 799m);
 
         address.Update("Nordrad GmbH", "Neue Straße 1", "20099", "Hamburg", "DE", null);
 

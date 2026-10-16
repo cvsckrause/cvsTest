@@ -185,7 +185,7 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
                 <strong>{line.sku}</strong>
                 <span>{line.quantity.toLocaleString('de-DE')}</span>
                 <span>{euro(line.unitPrice)}</span>
-                <strong>{euro(line.quantity * line.unitPrice)}</strong>
+                <strong>{euro(line.netAmount)}</strong>
                 <button className="remove" onClick={() => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index))} disabled={Boolean(order)} aria-label={`Position ${index + 1} entfernen`}>×</button>
               </div>
             ))}

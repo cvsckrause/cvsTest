@@ -76,7 +76,7 @@ const salesOrder = {
   status: 'Released',
   warehouseCode: 'MAIN',
   netAmount: 799,
-  lines: [{ articleId: 'article-1', sku: 'BIKE-001', quantity: 1, unitPrice: 799 }],
+  lines: [{ articleId: 'article-1', sku: 'BIKE-001', description: 'Cityrad', taxCode: 'Standard19', quantity: 1, unitPrice: 799, netAmount: 799 }],
   createdAt: '2026-10-15T10:00:00.000Z',
 }
 
@@ -186,6 +186,27 @@ test('sends the chosen tax code when creating an article and lists the rate', as
       String(requestUrl).includes('/articles') && requestInit?.method === 'POST')
     expect(JSON.parse(String(createCall?.[1]?.body))).toMatchObject({ sku: 'BOOK-001', taxCode: 'Reduced7' })
   })
+})
+
+test('rounds each draft line to cents before summing the order net', async () => {
+  const bolt = { id: 'article-2', sku: 'BOLT-01', name: 'Schraube', salesPrice: 0.125, taxCode: 'Reduced7' }
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url.includes('/articles')) return jsonResponse([bolt])
+    return route(url)
+  }))
+
+  render(<App />)
+  await openNewOrder()
+  await screen.findByRole('option', { name: 'BOLT-01 · Schraube' })
+  fireEvent.click(screen.getByRole('button', { name: 'Position hinzufügen' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Position hinzufügen' }))
+
+  const lineTable = screen.getByRole('table', { name: 'Auftragspositionen' })
+  const [, firstLine] = within(lineTable).getAllByRole('row')
+  expect(firstLine.querySelector('strong:last-of-type')).toHaveTextContent('0,13 €')
+  const warenwert = screen.getByText('Warenwert').parentElement as HTMLElement
+  expect(within(warenwert).getByText('0,26 €')).toBeInTheDocument()
 })
 
 test('shows the sales order list and opens capture from it', async () => {

@@ -547,6 +547,17 @@
             "format": "uuid",
             "type": "string"
           },
+          "description": {
+            "type": "string"
+          },
+          "netAmount": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
           "quantity": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
@@ -556,6 +567,9 @@
             ]
           },
           "sku": {
+            "type": "string"
+          },
+          "taxCode": {
             "type": "string"
           },
           "unitPrice": {
@@ -570,8 +584,11 @@
         "required": [
           "articleId",
           "sku",
+          "description",
+          "taxCode",
           "quantity",
-          "unitPrice"
+          "unitPrice",
+          "netAmount"
         ],
         "type": "object"
       },

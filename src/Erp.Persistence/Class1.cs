@@ -138,9 +138,12 @@ public sealed class ErpDbContext(
             entity.ToTable("sales_order_lines");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Sku).HasMaxLength(80);
+            entity.Property(x => x.Description).HasMaxLength(240);
+            entity.Property(x => x.TaxCode).HasConversion<string>().HasMaxLength(20).HasDefaultValue(TaxCode.Standard19);
             entity.Property(x => x.Quantity).HasPrecision(18, 4);
             entity.Property(x => x.UnitPrice).HasPrecision(18, 4);
-            entity.HasIndex(x => new { x.TenantId, x.SalesOrderId });
+            entity.Ignore(x => x.NetAmount);
+            entity.HasIndex(x => new { x.TenantId, x.SalesOrderId, x.Position }).IsUnique();
             entity.HasQueryFilter(x => x.TenantId == tenantContext.TenantId);
         });
 

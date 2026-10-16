@@ -60,7 +60,8 @@ internal static class SalesEndpoints
                     order.OrderNumber,
                     order.CustomerId,
                     order.Status,
-                    NetAmount = order.Lines.Sum(line => line.Quantity * line.UnitPrice),
+                    // Translates to PostgreSQL round(numeric, 2), which rounds half away from zero like Money.Round.
+                    NetAmount = order.Lines.Sum(line => Math.Round(line.Quantity * line.UnitPrice, 2)),
                     order.CreatedAt
                 })
                 .ToListAsync(cancellationToken);
@@ -142,7 +143,7 @@ internal static class SalesEndpoints
             foreach (var line in request.Lines)
             {
                 var article = articles[line.ArticleId];
-                order.AddLine(article.Id, article.Sku, line.Quantity, article.SalesPrice);
+                order.AddLine(article.Id, article.Sku, article.Name, article.TaxCode, line.Quantity, article.SalesPrice);
             }
 
             db.SalesOrders.Add(order);
@@ -384,7 +385,14 @@ internal static class SalesEndpoints
             order.Status.ToString(),
             order.WarehouseCode,
             order.NetAmount,
-            order.Lines.Select(line => new SalesOrderLineResponse(line.ArticleId, line.Sku, line.Quantity, line.UnitPrice)).ToArray());
+            order.Lines.Select(line => new SalesOrderLineResponse(
+                line.ArticleId,
+                line.Sku,
+                line.Description,
+                line.TaxCode.ToString(),
+                line.Quantity,
+                line.UnitPrice,
+                line.NetAmount)).ToArray());
 
     private static DeliveryResponse ToDeliveryResponse(Delivery delivery) =>
         new(
@@ -442,7 +450,14 @@ public sealed record SalesOrderResponse(
     string WarehouseCode,
     decimal NetAmount,
     IReadOnlyCollection<SalesOrderLineResponse> Lines);
-public sealed record SalesOrderLineResponse(Guid ArticleId, string Sku, decimal Quantity, decimal UnitPrice);
+public sealed record SalesOrderLineResponse(
+    Guid ArticleId,
+    string Sku,
+    string Description,
+    string TaxCode,
+    decimal Quantity,
+    decimal UnitPrice,
+    decimal NetAmount);
 public sealed record DeliveryResponse(
     Guid Id,
     Guid SalesOrderId,
