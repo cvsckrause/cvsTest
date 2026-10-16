@@ -123,7 +123,8 @@ export class ErpDevStack extends cdk.Stack {
     })
     const userPoolClient = userPool.addClient('SpaClient', {
       generateSecret: false,
-      authFlows: { userSrp: true },
+      // Admin password auth is for the scripted smoke test. The browser still uses SRP.
+      authFlows: { userSrp: true, adminUserPassword: true },
       oAuth: {
         flows: { authorizationCodeGrant: true },
         scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
@@ -164,9 +165,11 @@ export class ErpDevStack extends cdk.Stack {
     const apiRepository = ecr.Repository.fromRepositoryName(this, 'ApiRepository', 'erp-dev-api')
     const workerRepository = ecr.Repository.fromRepositoryName(this, 'WorkerRepository', 'erp-dev-worker')
     const migratorRepository = ecr.Repository.fromRepositoryName(this, 'MigratorRepository', 'erp-dev-migrator')
-    const apiImage = ecs.ContainerImage.fromEcrRepository(apiRepository, 'latest')
-    const workerImage = ecs.ContainerImage.fromEcrRepository(workerRepository, 'latest')
-    const migratorImage = ecs.ContainerImage.fromEcrRepository(migratorRepository, 'latest')
+    // Deploy passes apiImageDigest, workerImageDigest, and migratorImageDigest (sha256:...).
+    // Synth without those keys still resolves the mutable latest tag.
+    const apiImage = pinnedEcrImage(this, apiRepository, 'apiImageDigest')
+    const workerImage = pinnedEcrImage(this, workerRepository, 'workerImageDigest')
+    const migratorImage = pinnedEcrImage(this, migratorRepository, 'migratorImageDigest')
 
     const logGroup = new logs.LogGroup(this, 'ApplicationLogs', {
       retention: logs.RetentionDays.ONE_WEEK,
@@ -274,6 +277,10 @@ export class ErpDevStack extends cdk.Stack {
         Database__WorkerPassword: ecs.Secret.fromSecretsManager(workerSecret, 'password'),
       },
     })
+    // fromRegistry does not grant pull. The latest-tag path gets it from fromEcrRepository.
+    grantPullForPinnedImage(this, apiRepository, apiTask, 'apiImageDigest')
+    grantPullForPinnedImage(this, workerRepository, workerTask, 'workerImageDigest')
+    grantPullForPinnedImage(this, migratorRepository, migratorTask, 'migratorImageDigest')
 
     documents.grantReadWrite(apiTask.taskRole)
     documents.grantReadWrite(workerTask.taskRole)
@@ -402,6 +409,7 @@ export class ErpDevStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'HealthUrl', { value: `${publicBaseUrl}/health` })
     new cdk.CfnOutput(this, 'OpenApiUrl', { value: `${publicBaseUrl}/openapi/v1.json` })
     new cdk.CfnOutput(this, 'DistributionDomainName', { value: distribution.distributionDomainName })
+    new cdk.CfnOutput(this, 'AlbDnsName', { value: alb.loadBalancerDnsName })
     new cdk.CfnOutput(this, 'UserPoolId', { value: userPool.userPoolId })
     new cdk.CfnOutput(this, 'UserPoolClientId', { value: userPoolClient.userPoolClientId })
     new cdk.CfnOutput(this, 'CognitoDomain', {
@@ -455,4 +463,35 @@ export class ErpDevStack extends cdk.Stack {
       value: 'npx cdk destroy Erp-dev --force',
     })
   }
+}
+
+function pinnedEcrImage(scope: cdk.Stack, repository: ecr.IRepository, digestContextKey: string): ecs.ContainerImage {
+  const digest = readImageDigest(scope, digestContextKey)
+  if (!digest) {
+    return ecs.ContainerImage.fromEcrRepository(repository, 'latest')
+  }
+
+  return ecs.ContainerImage.fromRegistry(`${repository.repositoryUri}@${digest}`)
+}
+
+function grantPullForPinnedImage(
+  scope: cdk.Stack,
+  repository: ecr.IRepository,
+  task: ecs.TaskDefinition,
+  digestContextKey: string,
+) {
+  if (!readImageDigest(scope, digestContextKey)) return
+  const role = task.executionRole
+  if (!role) {
+    throw new Error(`Task ${task.node.path} has no execution role for ECR pull.`)
+  }
+
+  repository.grantPull(role)
+}
+
+function readImageDigest(scope: cdk.Stack, digestContextKey: string): string | undefined {
+  const raw = scope.node.tryGetContext(digestContextKey)
+  if (typeof raw !== 'string' || raw.trim().length === 0) return undefined
+  const digest = raw.trim()
+  return digest.startsWith('sha256:') ? digest : `sha256:${digest}`
 }

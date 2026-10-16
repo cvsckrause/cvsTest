@@ -33,3 +33,26 @@ template.hasResourceProperties('AWS::CloudWatch::Alarm', {
 const alarms = template.findResources('AWS::CloudWatch::Alarm')
 assert.ok(Object.keys(alarms).length >= 2)
 console.log('outbox alarms ok')
+
+const client = JSON.stringify(template.findResources('AWS::Cognito::UserPoolClient'))
+assert.match(client, /ALLOW_USER_SRP_AUTH/)
+assert.match(client, /ALLOW_ADMIN_USER_PASSWORD_AUTH/)
+assert.ok(template.findOutputs('AlbDnsName').AlbDnsName)
+console.log('smoke auth and alb output ok')
+
+const digest = 'sha256:1111111111111111111111111111111111111111111111111111111111111111'
+const pinnedApp = new cdk.App()
+pinnedApp.node.setContext('apiImageDigest', digest)
+pinnedApp.node.setContext('workerImageDigest', digest)
+pinnedApp.node.setContext('migratorImageDigest', digest)
+const pinned = new ErpDevStack(pinnedApp, 'Erp-dev', {
+  environment: 'dev',
+  env: { account: '098981324459', region: 'eu-north-1' },
+})
+const pinnedTemplate = Template.fromStack(pinned)
+const pinnedTasks = JSON.stringify(pinnedTemplate.findResources('AWS::ECS::TaskDefinition'))
+assert.match(pinnedTasks, new RegExp(`@${digest}`))
+assert.equal((pinnedTasks.match(new RegExp(digest, 'g')) ?? []).length, 3)
+const policies = JSON.stringify(pinnedTemplate.findResources('AWS::IAM::Policy'))
+assert.match(policies, /ecr:BatchGetImage/)
+console.log('pinned image digests ok')
