@@ -11,9 +11,11 @@ namespace Erp.Integration.Tests;
 [Collection(PostgresCollection.Name)]
 public sealed class InvoicePrefixUpgradeTests(PostgresFixture fixture)
 {
-    private const string NumberRangesMigration = "20261016063016_AddNumberRanges";
     private const string PrefixMigration = "20261016091520_PrefixInvoiceNumbers";
     private const string OwnerRole = "erp_migration_owner";
+
+    // Earlier migrations run as postgres: the test role owns only what PrefixInvoiceNumbers touches.
+    private static readonly string PreviousMigration = MigrationBefore(PrefixMigration);
 
     private static readonly Guid TenantX = Guid.Parse("0000000a-0000-0000-0000-000000000022");
     private static readonly Guid TenantY = Guid.Parse("0000000b-0000-0000-0000-000000000022");
@@ -48,7 +50,7 @@ public sealed class InvoicePrefixUpgradeTests(PostgresFixture fixture)
         await PrepareNumberRangesSchemaAsync(scratch);
         await MigrateAsOwnerAsync(scratch, PrefixMigration);
 
-        await MigrateAsOwnerAsync(scratch, NumberRangesMigration);
+        await MigrateAsOwnerAsync(scratch, PreviousMigration);
 
         Assert.Equal(("", 4L), await RangeAsync(scratch, TenantX, "Invoice", 0));
         Assert.Equal(("", 2L), await RangeAsync(scratch, TenantY, "Invoice", 0));
@@ -66,7 +68,7 @@ public sealed class InvoicePrefixUpgradeTests(PostgresFixture fixture)
             .Options;
         await using (var db = new ErpDbContext(options, new TenantContext(Guid.NewGuid(), "migrate")))
         {
-            await db.GetService<IMigrator>().MigrateAsync(NumberRangesMigration);
+            await db.GetService<IMigrator>().MigrateAsync(PreviousMigration);
         }
 
         await using var connection = new NpgsqlConnection(scratch.AdminConnectionString);
@@ -101,6 +103,18 @@ public sealed class InvoicePrefixUpgradeTests(PostgresFixture fixture)
         command.Parameters.AddWithValue("y", TenantY);
         command.Parameters.AddWithValue("z", TenantZ);
         await command.ExecuteNonQueryAsync();
+    }
+
+    private static string MigrationBefore(string migrationId)
+    {
+        var options = new DbContextOptionsBuilder<ErpDbContext>()
+            .UseNpgsql("Host=127.0.0.1;Database=unused")
+            .Options;
+        using var db = new ErpDbContext(options, new TenantContext(Guid.NewGuid(), "model"));
+        return db.GetService<IMigrationsAssembly>().Migrations.Keys
+            .Where(id => string.CompareOrdinal(id, migrationId) < 0)
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .Last();
     }
 
     private static async Task MigrateAsOwnerAsync(ScratchDatabase scratch, string target)
