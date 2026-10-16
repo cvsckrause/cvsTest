@@ -243,6 +243,13 @@ public sealed class ErpDbContext(
             entity.Property(x => x.Firmenname).HasMaxLength(Mandant.FirmennameMaxLength);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
             entity.Property(x => x.ApprovalTokenHash).HasMaxLength(64);
+            entity.Property(x => x.SellerStreet).HasMaxLength(Mandant.StreetMaxLength);
+            entity.Property(x => x.SellerPostalCode).HasMaxLength(Mandant.PostalCodeMaxLength);
+            entity.Property(x => x.SellerCity).HasMaxLength(Mandant.CityMaxLength);
+            entity.Property(x => x.SellerCountryCode).HasMaxLength(2);
+            entity.Property(x => x.SellerAdditionalLine).HasMaxLength(Mandant.StreetMaxLength);
+            entity.Property(x => x.Steuernummer).HasMaxLength(Mandant.SteuernummerMaxLength);
+            entity.Property(x => x.UstIdNr).HasMaxLength(Mandant.UstIdNrMaxLength);
             entity.Ignore(x => x.Label);
             entity.HasIndex(x => x.Number).IsUnique();
             entity.HasIndex(x => x.ApprovalTokenHash).IsUnique();

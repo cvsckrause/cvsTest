@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-export type StammTab = 'articles' | 'addresses'
+export type StammTab = 'articles' | 'addresses' | 'firma'
 
 export type AppRoute =
   | { workspace: 'sales'; documentId: string | null }
@@ -19,8 +19,8 @@ export function parseRoute(pathname: string): AppRoute {
   const parts = pathname.split('/').filter(Boolean)
   if (parts[0] === 'lager') return { workspace: 'lager' }
   if (parts[0] === 'stamm') {
-    const tab: StammTab = parts[1] === 'addresses' ? 'addresses' : 'articles'
-    const documentId = parts[1] === tab ? (parts[2] ?? null) : null
+    const tab: StammTab = parts[1] === 'addresses' || parts[1] === 'firma' ? parts[1] : 'articles'
+    const documentId = parts[1] === tab && tab !== 'firma' ? (parts[2] ?? null) : null
     return { workspace: 'stamm', tab, documentId }
   }
   const documentId = parts[0] === 'sales' ? (parts[1] ?? null) : null
@@ -30,7 +30,7 @@ export function parseRoute(pathname: string): AppRoute {
 export function formatRoute(route: AppRoute): string {
   if (route.workspace === 'lager') return '/lager'
   if (route.workspace === 'stamm') {
-    return route.documentId ? `/stamm/${route.tab}/${route.documentId}` : `/stamm/${route.tab}`
+    return route.documentId && route.tab !== 'firma' ? `/stamm/${route.tab}/${route.documentId}` : `/stamm/${route.tab}`
   }
   return route.documentId ? `/sales/${route.documentId}` : '/sales'
 }

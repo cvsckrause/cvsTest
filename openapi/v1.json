@@ -685,6 +685,82 @@
         ],
         "type": "object"
       },
+      "SellerDetailsResponse": {
+        "properties": {
+          "additionalLine": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "city": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "countryCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "firmenname": {
+            "type": "string"
+          },
+          "mandantNumber": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "missingFields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "postalCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "steuernummer": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "street": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "ustIdNr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "mandantNumber",
+          "firmenname",
+          "street",
+          "postalCode",
+          "city",
+          "countryCode",
+          "additionalLine",
+          "steuernummer",
+          "ustIdNr",
+          "missingFields"
+        ],
+        "type": "object"
+      },
       "SessionResponse": {
         "properties": {
           "firmenname": {
@@ -934,6 +1010,62 @@
         "required": [
           "name",
           "salesPrice"
+        ],
+        "type": "object"
+      },
+      "UpdateSellerDetailsRequest": {
+        "properties": {
+          "additionalLine": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "city": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "countryCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "postalCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "steuernummer": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "street": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "ustIdNr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "street",
+          "postalCode",
+          "city",
+          "countryCode",
+          "additionalLine",
+          "steuernummer",
+          "ustIdNr"
         ],
         "type": "object"
       }
@@ -1417,6 +1549,58 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/InvoiceResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "tags": [
+          "Erp.Api"
+        ]
+      }
+    },
+    "/api/v1/mandant/seller": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SellerDetailsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "tags": [
+          "Erp.Api"
+        ]
+      },
+      "put": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSellerDetailsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SellerDetailsResponse"
                 }
               }
             },

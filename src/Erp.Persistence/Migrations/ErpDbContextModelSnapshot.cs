@@ -460,10 +460,38 @@ namespace Erp.Persistence.Migrations
                         .HasColumnType("bigint")
                         .HasDefaultValueSql("nextval('erp.mandant_number_seq')");
 
+                    b.Property<string>("SellerAdditionalLine")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("SellerCity")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("SellerCountryCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<string>("SellerPostalCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("SellerStreet")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Steuernummer")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("UstIdNr")
+                        .HasMaxLength(14)
+                        .HasColumnType("character varying(14)");
 
                     b.HasKey("Id");
 

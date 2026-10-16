@@ -24,6 +24,8 @@ export type StockBalanceRow = Json<Schemas['StockResponse']>
 export type StockMovementRow = Json<Schemas['StockMovementResponse']>
 export type StockReceipt = Json<Schemas['StockReceiptResponse']>
 export type Session = Json<Schemas['SessionResponse']>
+export type SellerDetails = Json<Schemas['SellerDetailsResponse']>
+export type SellerDetailsUpdate = Json<Schemas['UpdateSellerDetailsRequest']>
 
 const baseUrl = import.meta.env.VITE_API_URL ?? '/api/v1'
 
@@ -79,6 +81,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const erpApi = {
   session: () => request<Session>('/session'),
+  sellerDetails: () => request<SellerDetails>('/mandant/seller'),
+  updateSellerDetails: (payload: SellerDetailsUpdate) =>
+    request<SellerDetails>('/mandant/seller', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
   customers: (after?: string) =>
     request<Customer[]>(`/customers${after ? `?after=${encodeURIComponent(after)}` : ''}`),
   articles: (q?: string) => request<Article[]>(`/articles${q ? `?q=${encodeURIComponent(q)}` : ''}`),

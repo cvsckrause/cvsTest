@@ -188,6 +188,56 @@ test('sends the chosen tax code when creating an article and lists the rate', as
   })
 })
 
+test('edits the seller details on the Firma tab with a read-only Firmenname', async () => {
+  const seller = {
+    mandantNumber: 100,
+    firmenname: 'Northstar Demo GmbH',
+    street: null,
+    postalCode: null,
+    city: null,
+    countryCode: null,
+    additionalLine: null,
+    steuernummer: null,
+    ustIdNr: null,
+    missingFields: ['street', 'postalCode', 'city', 'countryCode', 'steuernummerOrUstIdNr'],
+  }
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url.endsWith('/mandant/seller') && init?.method === 'PUT') {
+      return jsonResponse({ ...seller, ...JSON.parse(String(init.body)), ustIdNr: 'DE123456789', missingFields: [] })
+    }
+    if (url.endsWith('/mandant/seller')) return jsonResponse(seller)
+    return route(url)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  window.history.replaceState(null, '', '/stamm/firma')
+
+  render(<App />)
+  const firmenname = await screen.findByDisplayValue('Northstar Demo GmbH')
+  expect(firmenname).toBeDisabled()
+  expect(window.location.pathname).toBe('/stamm/firma')
+
+  fireEvent.change(screen.getByLabelText('Straße'), { target: { value: 'Hafenstraße 1' } })
+  fireEvent.change(screen.getByLabelText('PLZ'), { target: { value: '20095' } })
+  fireEvent.change(screen.getByLabelText('Ort'), { target: { value: 'Hamburg' } })
+  fireEvent.change(screen.getByLabelText('USt-IdNr.'), { target: { value: 'de 123 456 789' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Firmendaten speichern' }))
+
+  expect((await screen.findAllByText('Firmendaten gespeichert.')).length).toBeGreaterThan(0)
+  const putCall = fetchMock.mock.calls.find(([requestUrl, requestInit]) =>
+    String(requestUrl).endsWith('/mandant/seller') && requestInit?.method === 'PUT')
+  expect(JSON.parse(String(putCall?.[1]?.body))).toEqual({
+    street: 'Hafenstraße 1',
+    postalCode: '20095',
+    city: 'Hamburg',
+    countryCode: 'DE',
+    additionalLine: null,
+    steuernummer: null,
+    ustIdNr: 'de 123 456 789',
+  })
+  expect(screen.getByLabelText('USt-IdNr.')).toHaveValue('DE123456789')
+})
+
 test('rounds each draft line to cents before summing the order net', async () => {
   const bolt = { id: 'article-2', sku: 'BOLT-01', name: 'Schraube', salesPrice: 0.125, taxCode: 'Reduced7' }
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
@@ -240,7 +290,7 @@ test('opens stamm workspace for articles and addresses', async () => {
 
   fireEvent.click(screen.getAllByTitle('Stammdaten')[0])
 
-  expect(await screen.findByRole('heading', { name: 'Artikel & Adressen' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Artikel, Adressen & Firma' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Artikel anlegen' })).toBeInTheDocument()
 
   fireEvent.click(screen.getByRole('button', { name: /Adressen/ }))
@@ -607,7 +657,7 @@ test('does not reopen the previous Mandant Stamm document after a switch', async
   })
 
   fireEvent.click(screen.getByTitle('Stammdaten'))
-  expect(await screen.findByRole('heading', { name: 'Artikel & Adressen' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Artikel, Adressen & Firma' })).toBeInTheDocument()
   expect(window.location.pathname).toBe('/stamm/articles')
   const articleReads = fetchMock.mock.calls.filter(([requestUrl, requestInit]) =>
     String(requestUrl).includes('/articles/article-1')

@@ -128,7 +128,7 @@ function Workspace({
 
   function openStamm() {
     navigate(lastStamm)
-    setNotice('Stammdaten: Artikel und Adressen verwalten.')
+    setNotice('Stammdaten: Artikel, Adressen und Firmendaten verwalten.')
   }
 
   function openLager() {

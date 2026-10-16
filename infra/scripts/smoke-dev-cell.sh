@@ -154,6 +154,20 @@ if [[ "${approve_status}" != "404" ]]; then
 fi
 echo "Anonymous approval endpoint is reachable through CloudFront."
 
+# Releases need complete seller details. Demo values fill gaps only, so edits made on the cell survive.
+seller="$(request GET /api/v1/mandant/seller)"
+if jq -e '.missingFields | length > 0' <<<"${seller}" >/dev/null; then
+  seller="$(request PUT /api/v1/mandant/seller \
+    '{"street":"Hafenstraße 1","postalCode":"20095","city":"Hamburg","countryCode":"DE","steuernummer":"22/123/45678","ustIdNr":"DE123456789"}')"
+  if ! jq -e '.missingFields | length == 0' <<<"${seller}" >/dev/null; then
+    echo "PUT /api/v1/mandant/seller left fields missing: ${seller}" >&2
+    exit 1
+  fi
+  echo "Seller details seeded for the bootstrap Mandant."
+else
+  echo "Seller details of the bootstrap Mandant are complete."
+fi
+
 suffix="${RUN_ID}"
 customer="$(request POST /api/v1/customers "$(jq -nc --arg n "SMK-${suffix}" '{number:$n,name:"Smoke Customer"}')")"
 customer_id="$(jq -er '.id' <<<"${customer}")"

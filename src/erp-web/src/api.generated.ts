@@ -456,6 +456,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mandant/seller": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SellerDetailsResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateSellerDetailsRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SellerDetailsResponse"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/memberships": {
         parameters: {
             query?: never;
@@ -1235,6 +1307,19 @@ export interface components {
             orderNumber: string;
             status: string;
         };
+        SellerDetailsResponse: {
+            additionalLine: null | string;
+            city: null | string;
+            countryCode: null | string;
+            firmenname: string;
+            /** Format: int64 */
+            mandantNumber: number | string;
+            missingFields: string[];
+            postalCode: null | string;
+            steuernummer: null | string;
+            street: null | string;
+            ustIdNr: null | string;
+        };
         SessionResponse: {
             firmenname: null | string;
             /** Format: int64 */
@@ -1299,6 +1384,15 @@ export interface components {
             /** Format: double */
             salesPrice: number | string;
             taxCode?: null | string;
+        };
+        UpdateSellerDetailsRequest: {
+            additionalLine: null | string;
+            city: null | string;
+            countryCode: null | string;
+            postalCode: null | string;
+            steuernummer: null | string;
+            street: null | string;
+            ustIdNr: null | string;
         };
     };
     responses: never;

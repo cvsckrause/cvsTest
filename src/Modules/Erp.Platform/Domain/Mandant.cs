@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace Erp.Platform.Domain;
 
 public enum MandantStatus
@@ -6,10 +8,15 @@ public enum MandantStatus
     Active,
 }
 
-public sealed class Mandant
+public sealed partial class Mandant
 {
     public const int FirmennameMaxLength = 240;
     public const long FirstRegisteredNumber = 1001;
+    public const int StreetMaxLength = 240;
+    public const int PostalCodeMaxLength = 20;
+    public const int CityMaxLength = 120;
+    public const int SteuernummerMaxLength = 40;
+    public const int UstIdNrMaxLength = 14;
 
     private Mandant()
     {
@@ -33,6 +40,13 @@ public sealed class Mandant
     public DateTimeOffset? ApprovalExpiresAt { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? ActivatedAt { get; private set; }
+    public string? SellerStreet { get; private set; }
+    public string? SellerPostalCode { get; private set; }
+    public string? SellerCity { get; private set; }
+    public string? SellerCountryCode { get; private set; }
+    public string? SellerAdditionalLine { get; private set; }
+    public string? Steuernummer { get; private set; }
+    public string? UstIdNr { get; private set; }
 
     public string Label => $"Mandant {Number} · {Firmenname}";
 
@@ -76,6 +90,84 @@ public sealed class Mandant
         Status = MandantStatus.Active;
         ActivatedAt = now;
     }
+
+    public void ChangeSellerDetails(
+        string? street,
+        string? postalCode,
+        string? city,
+        string? countryCode,
+        string? additionalLine,
+        string? steuernummer,
+        string? ustIdNr)
+    {
+        var nextStreet = Require(street, StreetMaxLength, "Street", nameof(street));
+        var nextPostalCode = Require(postalCode, PostalCodeMaxLength, "Postal code", nameof(postalCode));
+        var nextCity = Require(city, CityMaxLength, "City", nameof(city));
+        var nextCountry = countryCode?.Trim().ToUpperInvariant() ?? string.Empty;
+        if (nextCountry.Length != 2 || !nextCountry.All(char.IsAsciiLetterUpper))
+        {
+            throw new ArgumentException("Country code must be a 2-letter ISO code.", nameof(countryCode));
+        }
+
+        var nextAdditional = Optional(additionalLine, StreetMaxLength, "Additional line", nameof(additionalLine));
+        var nextSteuernummer = Optional(steuernummer, SteuernummerMaxLength, "Steuernummer", nameof(steuernummer));
+        var nextUstIdNr = NormalizeUstIdNr(ustIdNr);
+        if (nextSteuernummer is null && nextUstIdNr is null)
+        {
+            throw new ArgumentException("Steuernummer or USt-IdNr is required.", nameof(steuernummer));
+        }
+
+        SellerStreet = nextStreet;
+        SellerPostalCode = nextPostalCode;
+        SellerCity = nextCity;
+        SellerCountryCode = nextCountry;
+        SellerAdditionalLine = nextAdditional;
+        Steuernummer = nextSteuernummer;
+        UstIdNr = nextUstIdNr;
+    }
+
+    public IReadOnlyList<string> MissingSellerFields()
+    {
+        var missing = new List<string>();
+        if (string.IsNullOrWhiteSpace(SellerStreet)) missing.Add("street");
+        if (string.IsNullOrWhiteSpace(SellerPostalCode)) missing.Add("postalCode");
+        if (string.IsNullOrWhiteSpace(SellerCity)) missing.Add("city");
+        if (string.IsNullOrWhiteSpace(SellerCountryCode)) missing.Add("countryCode");
+        if (string.IsNullOrWhiteSpace(Steuernummer) && string.IsNullOrWhiteSpace(UstIdNr)) missing.Add("steuernummerOrUstIdNr");
+        return missing;
+    }
+
+    private static string? NormalizeUstIdNr(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var normalized = string.Concat(value.Where(character => !char.IsWhiteSpace(character))).ToUpperInvariant();
+        if (!UstIdNrPattern().IsMatch(normalized))
+        {
+            throw new ArgumentException(
+                "USt-IdNr must be a 2-letter country prefix followed by 2 to 12 letters or digits.",
+                "ustIdNr");
+        }
+
+        return normalized;
+    }
+
+    private static string Require(string? value, int maxLength, string label, string parameter) =>
+        Optional(value, maxLength, label, parameter) ?? throw new ArgumentException($"{label} is required.", parameter);
+
+    private static string? Optional(string? value, int maxLength, string label, string parameter)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var trimmed = value.Trim();
+        if (trimmed.Length > maxLength)
+        {
+            throw new ArgumentException($"{label} must be at most {maxLength} characters.", parameter);
+        }
+
+        return trimmed;
+    }
+
+    [GeneratedRegex("^[A-Z]{2}[A-Z0-9]{2,12}$")]
+    private static partial Regex UstIdNrPattern();
 
     public static string RequireFirmenname(string firmenname)
     {
