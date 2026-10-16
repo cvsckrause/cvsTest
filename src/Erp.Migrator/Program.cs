@@ -160,6 +160,8 @@ static async Task EnsureApplicationRolesAsync(
         BEGIN
             EXECUTE format('GRANT CONNECT, CREATE ON DATABASE %I TO erp_owner', current_database());
             EXECUTE format('GRANT CONNECT ON DATABASE %I TO erp_app, erp_worker', current_database());
+            -- EF creates __EFMigrationsHistory in public. PostgreSQL 15 revoked CREATE there from PUBLIC.
+            GRANT CREATE ON SCHEMA public TO erp_owner;
         END
         $db$;
         """);
@@ -212,7 +214,10 @@ static async Task RevokeDefinerMembershipAsync()
         adminPassword);
     await using var connection = new NpgsqlConnection(adminConnectionString);
     await connection.OpenAsync();
-    await ExecuteAsync(connection, "REVOKE erp_outbox_definer FROM erp_owner;");
+    await ExecuteAsync(connection, """
+        REVOKE erp_outbox_definer FROM erp_owner;
+        REVOKE CREATE ON SCHEMA public FROM erp_owner;
+        """);
 }
 
 static async Task SeedMembershipsAsync(ErpDbContext db, Guid tenantId)
