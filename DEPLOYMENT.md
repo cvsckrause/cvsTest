@@ -1,22 +1,24 @@
 # ERP docs preview on AWS
 
-The public site is the existing docs preview, exported to static HTML and served over HTTPS.
+**Status: shut down until further notice (16 Oct 2026).** CloudFront distribution `E2TFQ4QFVZ1QB` is disabled. `https://dt9udciv2ut48.cloudfront.net` does not serve the docs. The distribution, origin access control, and private S3 bucket are still in place so the site can be turned back on. Local preview is unchanged.
+
+The public site is the existing docs preview, exported to static HTML and served over HTTPS when the distribution is enabled.
 
 **URL:** https://dt9udciv2ut48.cloudfront.net
 
-Open that address in a browser. Nothing needs to run on your computer. The two architecture documents, the contents list, and the Mermaid diagrams are on that site.
-
 The repository does not contain the ERP application described in those documents. This deployment publishes the docs preview only. There is no database and there are no API keys.
 
-## What is running
+## What is in place
+
+The distribution is disabled. These resources remain so the preview can be turned back on.
 
 | Resource | Value |
 | --- | --- |
 | Region for the bucket | eu-north-1 (Stockholm), matching the configured AWS CLI credentials |
 | S3 bucket | `erp-docs-098981324459` (private, encrypted with SSE-S3) |
-| CloudFront distribution | `E2TFQ4QFVZ1QB` |
+| CloudFront distribution | `E2TFQ4QFVZ1QB` (disabled) |
 | Origin access control | `E4CKTMR9R3IGC` |
-| Public hostname | `dt9udciv2ut48.cloudfront.net` |
+| Public hostname | `dt9udciv2ut48.cloudfront.net` (does not resolve while disabled) |
 
 CloudFront is global. HTTP requests redirect to HTTPS. The S3 bucket blocks public access. Only this CloudFront distribution can read the objects. A direct request to the bucket returns 403.
 
@@ -25,6 +27,8 @@ Expected cost at docs-site traffic is about $0–$1 per month. S3 storage for a 
 A custom domain such as `my-app.example.com` is not configured. That needs a domain you own and a Route 53 hosted zone ($0.50 per month). The CloudFront certificate for `*.cloudfront.net` is already in use.
 
 ## Redeploy after editing the documents
+
+Publishing uploads HTML and invalidates the cache. It does not enable the distribution. While the preview is shut down, a publish leaves the public URL offline.
 
 From the repository root, in PowerShell:
 
@@ -49,6 +53,10 @@ curl.exe -s https://dt9udciv2ut48.cloudfront.net/health
 There is no application server in AWS, so there is no application log stream.
 
 Request counts and error rates are in the CloudFront console for distribution `E2TFQ4QFVZ1QB`, under Monitoring. Access logging to S3 is turned off so it does not add another bucket or storage charge. Turn on CloudFront standard logging in that console page if you later need a per-request log.
+
+## Turn the public site back on
+
+Set `DistributionConfig.Enabled` to `true` on distribution `E2TFQ4QFVZ1QB` and wait until the distribution status is `Deployed`. Use the same get-config, edit, and `update-distribution` sequence as in the delete steps below, with `Enabled` set to `true` instead of `false`. After DNS returns an address for `dt9udciv2ut48.cloudfront.net`, `GET /health` should succeed.
 
 ## Delete the AWS resources
 
