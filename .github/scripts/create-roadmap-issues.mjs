@@ -144,6 +144,18 @@ function parseEpicRow(line) {
   };
 }
 
+// Existing issues are not recreated. A re-run only fills gaps: plan labels
+// that are missing, and a milestone when the issue has none. Extra labels stay.
+export function gapPatch(existing, item, milestoneNumber) {
+  if (!existing) return null;
+  const have = (existing.labels ?? []).map((label) => (typeof label === "string" ? label : label.name));
+  const missing = item.labels.filter((label) => !have.includes(label));
+  const patch = {};
+  if (missing.length) patch.labels = [...have, ...missing];
+  if ((existing.milestone?.number ?? null) == null && milestoneNumber != null) patch.milestone = milestoneNumber;
+  return Object.keys(patch).length ? patch : null;
+}
+
 export function renderBody(item, ctx) {
   const parts = [item.body, "", "---"];
   const lane = item.labels.find((l) => l.startsWith("lane:"));
@@ -254,7 +266,22 @@ async function main() {
     const number = ctx.numbers.get(item.key);
     const milestoneTitle = item.milestone ? MILESTONES[item.milestone].title : "(none)";
     if (number) {
-      report.push({ item, action: `skipped (exists #${number})`, milestoneTitle });
+      const existing = findExisting(item.key);
+      const have = (existing?.labels ?? []).map((label) => label.name ?? label);
+      const missing = item.labels.filter((label) => !have.includes(label));
+      const patch = gapPatch(existing, item, item.milestone ? milestoneNumbers.get(item.milestone) : null);
+      if (!patch) {
+        report.push({ item, action: `unchanged #${number}`, milestoneTitle });
+        continue;
+      }
+      const detail = [missing.length ? `labels +${missing.join(",")}` : null, patch.milestone ? "milestone" : null].filter(Boolean).join(" ");
+      if (DRY_RUN) {
+        report.push({ item, action: `would fill #${number} (${detail})`, milestoneTitle });
+        continue;
+      }
+      await github("PATCH", `/repos/${REPO}/issues/${number}`, patch);
+      report.push({ item, action: `filled #${number} (${detail})`, milestoneTitle });
+      await pause();
       continue;
     }
     if (DRY_RUN) {
