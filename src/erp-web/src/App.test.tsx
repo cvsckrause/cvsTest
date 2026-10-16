@@ -510,7 +510,7 @@ test('asks for a bill-to address when the customer has several and sends the cho
   ]
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
-    if (url.includes('/addresses?role=Billing')) return jsonResponse(billingLinks)
+    if (url.endsWith('/customers/customer-1/addresses')) return jsonResponse([shippingLink, ...billingLinks])
     if (url.endsWith('/sales-orders') && init?.method === 'POST') {
       return jsonResponse({
         ...salesOrder,

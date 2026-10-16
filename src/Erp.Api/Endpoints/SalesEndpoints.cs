@@ -125,26 +125,18 @@ internal static class SalesEndpoints
                 .Where(link => link.CustomerId == request.CustomerId && link.Role == AddressRole.Billing)
                 .Select(link => link.AddressId)
                 .ToListAsync(cancellationToken);
-            Guid? billToAddressId;
-            if (request.BillToAddressId is { } chosenBillTo)
+            if (request.BillToAddressId is { } chosenBillTo && !billingAddressIds.Contains(chosenBillTo))
             {
-                if (!billingAddressIds.Contains(chosenBillTo))
-                {
-                    return Results.BadRequest(new { error = "Bill-to address must be linked to the customer as Billing." });
-                }
-
-                billToAddressId = chosenBillTo;
+                return Results.BadRequest(new { error = "Bill-to address must be linked to the customer as Billing." });
             }
-            else if (billingAddressIds.Count > 1)
+
+            if (request.BillToAddressId is null && billingAddressIds.Count > 1)
             {
                 return Results.BadRequest(new { error = "The customer has several billing addresses. Choose one as billToAddressId." });
             }
-            else
-            {
-                billToAddressId = billingAddressIds.Count == 1 ? billingAddressIds[0] : null;
-            }
 
-            var billToAddress = billToAddressId is { } billToId
+            var billToAddressId = request.BillToAddressId ?? (billingAddressIds is [var onlyBilling] ? onlyBilling : null);
+            var billToAddress = billToAddressId is { } billToId && billToId != shipToAddress.Id
                 ? await db.Addresses.AsNoTracking().SingleOrDefaultAsync(address => address.Id == billToId, cancellationToken)
                 : shipToAddress;
             if (billToAddress is null)

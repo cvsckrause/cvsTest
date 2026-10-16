@@ -238,14 +238,11 @@ export function useSalesWorkspace({
     if (!selectedCustomerId) return
 
     let cancelled = false
-    Promise.all([
-      erpApi.customerAddresses(selectedCustomerId, 'Shipping'),
-      erpApi.customerAddresses(selectedCustomerId, 'Billing'),
-    ])
-      .then(([shipping, billing]) => {
+    erpApi.customerAddresses(selectedCustomerId)
+      .then((links) => {
         if (cancelled) return
-        setShippingLinks(shipping)
-        setBillingLinks(billing)
+        setShippingLinks(withRole(links, 'Shipping'))
+        setBillingLinks(withRole(links, 'Billing'))
       })
       .catch((error: Error) => {
         if (!cancelled) setNotice(`Kundenadressen nicht ladbar: ${error.message}`)
@@ -421,12 +418,10 @@ export function useSalesWorkspace({
 
   async function reloadAddressLinks(forCustomerId: string, selectFirstIfEmpty: boolean) {
     if (forCustomerId !== selectedCustomerId) return
-    const [shipping, billing] = await Promise.all([
-      erpApi.customerAddresses(forCustomerId, 'Shipping'),
-      erpApi.customerAddresses(forCustomerId, 'Billing'),
-    ])
+    const links = await erpApi.customerAddresses(forCustomerId)
+    const shipping = withRole(links, 'Shipping')
     setShippingLinks(shipping)
-    setBillingLinks(billing)
+    setBillingLinks(withRole(links, 'Billing'))
     if (selectFirstIfEmpty) {
       setShipToAddressId((current) => current || shipping[0]?.addressId || '')
     }
@@ -491,6 +486,10 @@ export function useSalesWorkspace({
     invoices,
     documentsWaiting,
   }
+}
+
+function withRole(links: CustomerAddress[], role: 'Shipping' | 'Billing') {
+  return links.filter((link) => link.role === role)
 }
 
 export type SalesModel = ReturnType<typeof useSalesWorkspace>
