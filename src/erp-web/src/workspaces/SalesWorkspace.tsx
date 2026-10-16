@@ -1,4 +1,4 @@
-import { euro } from '../format'
+import { euro, formatWhen } from '../format'
 import type { SalesModel } from './sales-model'
 
 export function SalesWorkspace({ model }: { model: SalesModel }) {
@@ -88,7 +88,7 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
                   <strong>{row.orderNumber}</strong>
                   <span>{statusLabel(row.status)}</span>
                   <span>{euro(row.netAmount)}</span>
-                  <span>{formatCreatedAt(row.createdAt)}</span>
+                  <span>{formatWhen(row.createdAt)}</span>
                   <button className="secondary" type="button" onClick={() => openOrderFromList(row.id)}>
                     Öffnen
                   </button>
@@ -289,12 +289,6 @@ function statusClass(status?: string) {
   if (status === 'Released') return 'status released'
   if (status === 'Cancelled') return 'status cancelled'
   return 'status'
-}
-
-function formatCreatedAt(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })
 }
 
 function stepClass(id: SalesModel['step'], current: SalesModel['step'], order: SalesModel['order']) {
