@@ -7,6 +7,14 @@ export type AppRoute =
   | { workspace: 'stamm'; tab: StammTab; documentId: string | null }
   | { workspace: 'lager' }
 
+/** Pages that render without a login and outside the ERP shell. */
+export type PublicPage = 'registrieren' | 'freigabe'
+
+export function publicPageFor(pathname: string): PublicPage | null {
+  const first = pathname.split('/').filter(Boolean)[0]
+  return first === 'registrieren' || first === 'freigabe' ? first : null
+}
+
 export function parseRoute(pathname: string): AppRoute {
   const parts = pathname.split('/').filter(Boolean)
   if (parts[0] === 'lager') return { workspace: 'lager' }

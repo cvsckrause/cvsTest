@@ -63,7 +63,10 @@ if (!await db.Addresses.AnyAsync())
     db.CustomerAddresses.Add(CustomerAddress.Link(tenantId, customer.Id, address.Id, AddressRole.Shipping));
 }
 
-await SeedMembershipsAsync(db, tenantId);
+var secondTenantId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+await SeedMandantAsync(db, tenantId, 100, "Northstar Demo GmbH");
+await SeedMandantAsync(db, secondTenantId, 200, "Northstar Zweitfirma GmbH");
+await SeedMembershipsAsync(db, tenantId, secondTenantId);
 await db.SaveChangesAsync();
 Console.WriteLine("Database migrated and development tenant seeded.");
 
@@ -227,13 +230,20 @@ static async Task RevokeDefinerMembershipAsync()
         """);
 }
 
-static async Task SeedMembershipsAsync(ErpDbContext db, Guid tenantId)
+static async Task SeedMandantAsync(ErpDbContext db, Guid tenantId, long number, string firmenname)
+{
+    if (!await db.Mandanten.AnyAsync(item => item.Id == tenantId || item.Number == number))
+    {
+        db.Mandanten.Add(Mandant.Seed(tenantId, number, firmenname, DateTimeOffset.UtcNow));
+    }
+}
+
+static async Task SeedMembershipsAsync(ErpDbContext db, Guid tenantId, Guid secondTenantId)
 {
     var seed = Environment.GetEnvironmentVariable("Authentication__SeedMemberships");
     if (string.IsNullOrWhiteSpace(seed))
     {
-        var secondTenant = Guid.Parse("22222222-2222-2222-2222-222222222222");
-        seed = $"synthetic-a:{tenantId}:default;synthetic-b:{secondTenant}:default";
+        seed = $"synthetic-a:{tenantId}:default;synthetic-b:{secondTenantId}:default";
     }
 
     foreach (var membership in TenantMembership.ParseSeed(seed))

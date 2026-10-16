@@ -26,6 +26,36 @@
   color: #8a1f1f !important;
 }
 
+.auth-form {
+  display: grid;
+  gap: 12px;
+  width: min(22rem, 100%);
+  justify-self: center;
+  text-align: left;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 4px;
+  font-weight: 600;
+  color: #243b50;
+}
+
+.auth-form input {
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid #9aabb8;
+  border-radius: 3px;
+  font: inherit;
+  background: white;
+}
+
+.auth-link {
+  justify-self: center;
+  color: #0e566f;
+  font-weight: 600;
+}
+
 .auth-build {
   font-size: 0.85rem;
   color: #6a7f93 !important;

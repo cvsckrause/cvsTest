@@ -22,6 +22,7 @@ internal static class MembershipEndpoints
         api.MapGet(RelativePath, async (
             HttpContext context,
             ITenantMemberships memberships,
+            IMandantDirectory mandanten,
             CancellationToken cancellationToken) =>
         {
             var userId = AccessTokenSubject.Read(context.User);
@@ -35,8 +36,15 @@ internal static class MembershipEndpoints
 
             var rows = await memberships.ListAsync(userId, cancellationToken);
             var choice = TenantMembershipSelection.Choose(null, rows);
+            var known = await mandanten.FindActiveAsync(
+                rows.Select(row => row.TenantId).ToArray(),
+                cancellationToken);
             return Results.Ok(new MembershipListResponse(
-                rows.Select(row => new MembershipResponse(row.TenantId, row.IsDefault)).ToArray(),
+                rows.Select(row =>
+                {
+                    known.TryGetValue(row.TenantId, out var mandant);
+                    return new MembershipResponse(row.TenantId, row.IsDefault, mandant?.Number, mandant?.Firmenname);
+                }).ToArray(),
                 choice.TenantId));
         }).Produces<MembershipListResponse>();
 
@@ -44,7 +52,7 @@ internal static class MembershipEndpoints
     }
 }
 
-public sealed record MembershipResponse(Guid TenantId, bool IsDefault);
+public sealed record MembershipResponse(Guid TenantId, bool IsDefault, long? MandantNumber, string? Firmenname);
 
 public sealed record MembershipListResponse(
     IReadOnlyList<MembershipResponse> Memberships,

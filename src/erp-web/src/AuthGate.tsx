@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import type { FormEvent, ReactNode } from 'react'
+import { LOGIN_FAILED } from './auth/cognitoAdapter'
 import { bootstrapAuth } from './auth/runtime'
 import type { AuthAdapter, AuthSession } from './auth/types'
 import { getBuildInfo } from './buildInfo'
@@ -50,6 +51,86 @@ function LogoutButton({ adapter }: { adapter: AuthAdapter }) {
   )
 }
 
+function LoginForm({
+  adapter,
+  onSignedIn,
+}: {
+  adapter: AuthAdapter
+  onSignedIn: (session: AuthSession) => Promise<void>
+}) {
+  const [mandantennummer, setMandantennummer] = useState('')
+  const [user, setUser] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    setBusy(true)
+    setError(null)
+    let session: AuthSession
+    try {
+      session = await adapter.login({ mandantennummer, user, password })
+    } catch (failure: unknown) {
+      setPassword('')
+      setError(asErrorMessage(failure, LOGIN_FAILED))
+      setBusy(false)
+      return
+    }
+    await onSignedIn(session)
+  }
+
+  return (
+    <div className="auth-gate">
+      <h1>Northstar ERP</h1>
+      <form className="auth-form" onSubmit={submit} noValidate>
+        <label>
+          Mandantennummer
+          <input
+            name="mandantennummer"
+            inputMode="numeric"
+            autoComplete="off"
+            value={mandantennummer}
+            onChange={(event) => setMandantennummer(event.target.value)}
+          />
+        </label>
+        <label>
+          User
+          <input
+            name="user"
+            autoComplete="off"
+            autoCapitalize="none"
+            value={user}
+            onChange={(event) => setUser(event.target.value)}
+          />
+        </label>
+        <label>
+          Passwort
+          <input
+            name="password"
+            type="password"
+            autoComplete="off"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </label>
+        {error ? (
+          <p className="auth-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <button type="submit" className="primary" disabled={busy}>
+          Anmelden
+        </button>
+      </form>
+      <a className="auth-link" href="/registrieren">
+        Neuen Mandanten erstellen
+      </a>
+      <p className="auth-build">{buildInfo.label}</p>
+    </div>
+  )
+}
+
 export function AuthGate({
   children,
   bootstrap = bootstrapAuth,
@@ -62,10 +143,8 @@ export function AuthGate({
     message: 'Anmeldung wird geprüft …',
   })
 
-  useEffect(() => {
-    let cancelled = false
-
-    function shellFor(adapter: AuthAdapter, memberships: ShellMembership[], tenantId: string): ShellAuth {
+  const enter = useCallback(async (adapter: AuthAdapter, session: AuthSession, isCurrent: () => boolean) => {
+    function shellFor(memberships: ShellMembership[], tenantId: string): ShellAuth {
       return {
         memberships,
         tenantId,
@@ -79,46 +158,48 @@ export function AuthGate({
       }
     }
 
+    try {
+      if (session.mode !== 'cognito' || adapter.needsLogin(session)) {
+        setState({ status: 'ready', adapter, session, shell: null })
+        return
+      }
+
+      setState({ status: 'loading', message: 'Mandant wird ermittelt …' })
+      const payload = await loadMemberships(adapter)
+      if (!isCurrent()) return
+
+      const memberships = payload.memberships ?? []
+      const defaultTenantId = payload.defaultTenantId ?? null
+      if (memberships.length === 0 || defaultTenantId === null) {
+        setState({ status: 'empty', adapter })
+        return
+      }
+
+      adapter.setTenantId(defaultTenantId)
+      setState({ status: 'ready', adapter, session, shell: shellFor(memberships, defaultTenantId) })
+    } catch (error: unknown) {
+      if (isCurrent()) {
+        setState({ status: 'error', message: asErrorMessage(error, LOGIN_FAILED) })
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const isCurrent = () => !cancelled
+
     bootstrap()
-      .then(async ({ adapter, session }) => {
-        if (cancelled) return
-        if (session.mode !== 'cognito' || adapter.needsLogin(session)) {
-          setState({ status: 'ready', adapter, session, shell: null })
-          return
-        }
-
-        setState({ status: 'loading', message: 'Mandant wird ermittelt …' })
-        const payload = await loadMemberships(adapter)
-        if (cancelled) return
-
-        const memberships = payload.memberships ?? []
-        const defaultTenantId = payload.defaultTenantId ?? null
-        if (memberships.length === 0 || defaultTenantId === null) {
-          setState({ status: 'empty', adapter })
-          return
-        }
-
-        adapter.setTenantId(defaultTenantId)
-        setState({
-          status: 'ready',
-          adapter,
-          session,
-          shell: shellFor(adapter, memberships, defaultTenantId),
-        })
-      })
+      .then(({ adapter, session }) => (cancelled ? undefined : enter(adapter, session, isCurrent)))
       .catch((error: unknown) => {
         if (!cancelled) {
-          setState({
-            status: 'error',
-            message: asErrorMessage(error, 'Anmeldung fehlgeschlagen.'),
-          })
+          setState({ status: 'error', message: asErrorMessage(error, LOGIN_FAILED) })
         }
       })
 
     return () => {
       cancelled = true
     }
-  }, [bootstrap])
+  }, [bootstrap, enter])
 
   if (state.status === 'loading') {
     return (
@@ -152,27 +233,7 @@ export function AuthGate({
 
   const { adapter, session, shell } = state
   if (adapter.needsLogin(session)) {
-    return (
-      <div className="auth-gate">
-        <h1>Northstar ERP</h1>
-        <p>Melde dich mit Cognito an, um Artikel und Aufträge zu bearbeiten.</p>
-        <button
-          type="button"
-          className="primary"
-          onClick={() => {
-            void adapter.login().catch((error: unknown) => {
-              setState({
-                status: 'error',
-                message: asErrorMessage(error, 'Login fehlgeschlagen.'),
-              })
-            })
-          }}
-        >
-          Anmelden
-        </button>
-        <p className="auth-build">{buildInfo.label}</p>
-      </div>
-    )
+    return <LoginForm adapter={adapter} onSignedIn={(next) => enter(adapter, next, () => true)} />
   }
 
   const app = shell === null ? children : (

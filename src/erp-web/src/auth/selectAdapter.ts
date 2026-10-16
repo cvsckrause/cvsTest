@@ -18,11 +18,10 @@ export async function loadAuthConfig(fetcher: typeof fetch = fetch): Promise<Aut
   if (payload.mode === 'cognito') {
     const authority = String(payload.authority ?? '')
     const clientId = String(payload.clientId ?? '')
-    const hostedUiOrigin = String(payload.hostedUiOrigin ?? '')
-    if (!authority || !clientId || !hostedUiOrigin) {
+    if (!authority || !clientId) {
       throw new Error('Cognito Auth-Konfiguration ist unvollständig.')
     }
-    return { mode: 'cognito', authority, clientId, hostedUiOrigin }
+    return { mode: 'cognito', authority, clientId }
   }
   return { mode: 'local' }
 }

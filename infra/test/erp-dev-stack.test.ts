@@ -37,8 +37,37 @@ console.log('outbox alarms ok')
 const client = JSON.stringify(template.findResources('AWS::Cognito::UserPoolClient'))
 assert.match(client, /ALLOW_USER_SRP_AUTH/)
 assert.match(client, /ALLOW_ADMIN_USER_PASSWORD_AUTH/)
+assert.match(client, /"ALLOW_USER_PASSWORD_AUTH"/)
+assert.doesNotMatch(client, /CallbackURLs|AllowedOAuthFlows"/)
+assert.equal(Object.keys(template.findResources('AWS::Cognito::UserPoolDomain')).length, 0)
 assert.ok(template.findOutputs('AlbDnsName').AlbDnsName)
 console.log('smoke auth and alb output ok')
+
+const apiTaskDefinition = Object.values(template.findResources('AWS::ECS::TaskDefinition')).find((resource) =>
+  JSON.stringify(resource).includes('"Name":"Api"'),
+)
+assert.ok(apiTaskDefinition, 'API task definition is missing')
+const apiEnvironment = JSON.stringify(apiTaskDefinition)
+for (const name of [
+  'Registration__AwsRegion',
+  'Registration__UserPoolId',
+  'Registration__ApproverEmail',
+  'Registration__FromEmail',
+  'Registration__PublicBaseUrl',
+  'ForwardedHeaders__ForwardLimit',
+]) {
+  assert.match(apiEnvironment, new RegExp(`"Name":"${name}"`), `${name} is not set on the API task`)
+}
+assert.match(apiEnvironment, /"Value":"ckrause@cvs\.de"/)
+
+const registrationPolicy = JSON.stringify(template.findResources('AWS::IAM::Policy'))
+for (const action of ['AdminCreateUser', 'AdminSetUserPassword', 'AdminGetUser']) {
+  assert.match(registrationPolicy, new RegExp(`cognito-idp:${action}`))
+}
+assert.match(registrationPolicy, /"ses:SendEmail"/)
+assert.match(registrationPolicy, /"ses:FromAddress":"ckrause@cvs\.de"/)
+assert.equal(Object.keys(template.findResources('AWS::SES::EmailIdentity')).length, 0)
+console.log('registration wiring ok')
 
 const digest = 'sha256:1111111111111111111111111111111111111111111111111111111111111111'
 const pinnedApp = new cdk.App()

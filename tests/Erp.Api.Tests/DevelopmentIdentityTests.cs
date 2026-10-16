@@ -210,10 +210,11 @@ public sealed class DevelopmentIdentityTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("cognito", payload?.Mode);
         Assert.Equal("test-client", payload?.ClientId);
-        Assert.Equal("https://erp-test.auth.eu-north-1.amazoncognito.com", payload?.HostedUiOrigin);
+        Assert.Equal("https://example.invalid/", payload?.Authority);
+        Assert.Null(payload?.HostedUiOrigin);
     }
 
-    private sealed record AuthConfigPayload(string Mode, string? ClientId, string? HostedUiOrigin);
+    private sealed record AuthConfigPayload(string Mode, string? Authority, string? ClientId, string? HostedUiOrigin);
 
     [Fact]
     public async Task Disabled_authentication_outside_development_uses_an_explicit_development_identity()
@@ -335,7 +336,11 @@ internal sealed class ApiFixture : IAsyncDisposable
         string? configuredUserId = null,
         IReadOnlyList<TenantMembership>? memberships = null,
         string? tenantHeader = null,
-        Guid? bootstrapTenantId = null)
+        Guid? bootstrapTenantId = null,
+        IReadOnlyList<MandantSummary>? mandanten = null,
+        int? registrationPermits = null,
+        bool awsRegistration = false,
+        int? forwardLimit = null)
     {
         var observed = new ObservedTenant();
         var factory = CreateFactory(
@@ -347,9 +352,15 @@ internal sealed class ApiFixture : IAsyncDisposable
             user,
             observed,
             memberships,
-            bootstrapTenantId);
+            bootstrapTenantId,
+            mandanten,
+            registrationPermits,
+            awsRegistration,
+            forwardLimit);
         return new ApiFixture(factory, observed, tenantHeader);
     }
+
+    public IServiceProvider Services => _factory.Services;
 
     public static WebApplicationFactory<Program> CreateFactory(
         string environment,
@@ -360,9 +371,18 @@ internal sealed class ApiFixture : IAsyncDisposable
         ClaimsPrincipal? user = null,
         ObservedTenant? observed = null,
         IReadOnlyList<TenantMembership>? memberships = null,
-        Guid? bootstrapTenantId = null)
+        Guid? bootstrapTenantId = null,
+        IReadOnlyList<MandantSummary>? mandanten = null,
+        int? registrationPermits = null,
+        bool awsRegistration = false,
+        int? forwardLimit = null)
     {
         observed ??= new ObservedTenant();
+        Environment.SetEnvironmentVariable("Registration__PermitsPerHour", registrationPermits?.ToString());
+        Environment.SetEnvironmentVariable("Registration__FromEmail", awsRegistration ? "sender@example.test" : null);
+        Environment.SetEnvironmentVariable("Registration__UserPoolId", awsRegistration ? "eu-north-1_test" : null);
+        Environment.SetEnvironmentVariable("Registration__AwsRegion", awsRegistration ? "eu-north-1" : null);
+        Environment.SetEnvironmentVariable("ForwardedHeaders__ForwardLimit", forwardLimit?.ToString());
         user ??= new ClaimsPrincipal(new ClaimsIdentity());
         Environment.SetEnvironmentVariable(
             "ConnectionStrings__Erp",
@@ -371,9 +391,6 @@ internal sealed class ApiFixture : IAsyncDisposable
             "Authentication__Authority",
             authenticationEnabled ? "https://example.invalid/" : "");
         Environment.SetEnvironmentVariable("Authentication__ClientId", authenticationEnabled ? "test-client" : "");
-        Environment.SetEnvironmentVariable(
-            "Authentication__HostedUiDomain",
-            authenticationEnabled ? "erp-test.auth.eu-north-1.amazoncognito.com" : "");
         Environment.SetEnvironmentVariable("Authentication__Audience", "erp-api");
         Environment.SetEnvironmentVariable(
             "DevelopmentIdentity__Enabled",
@@ -392,6 +409,8 @@ internal sealed class ApiFixture : IAsyncDisposable
                 services.AddSingleton<IStartupFilter, TenantObservationFilter>();
                 services.RemoveAll<ITenantMemberships>();
                 services.AddSingleton<ITenantMemberships>(new FakeTenantMemberships(memberships ?? []));
+                services.RemoveAll<IMandantDirectory>();
+                services.AddSingleton<IMandantDirectory>(new FakeMandantDirectory(mandanten ?? []));
                 if (authenticationEnabled)
                 {
                     services.AddAuthentication()
@@ -446,6 +465,16 @@ internal sealed class FakeTenantMemberships : ITenantMemberships
 
         return Task.CompletedTask;
     }
+}
+
+internal sealed class FakeMandantDirectory(IReadOnlyList<MandantSummary> mandanten) : IMandantDirectory
+{
+    public Task<IReadOnlyDictionary<Guid, MandantSummary>> FindActiveAsync(
+        IReadOnlyCollection<Guid> tenantIds,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyDictionary<Guid, MandantSummary>>(mandanten
+            .Where(mandant => tenantIds.Contains(mandant.TenantId))
+            .ToDictionary(mandant => mandant.TenantId));
 }
 
 internal sealed class TestPrincipal(ClaimsPrincipal user)

@@ -4,7 +4,7 @@
 : "${AWS_REGION:=eu-north-1}"
 : "${AWS_ACCOUNT_ID:=098981324459}"
 : "${STACK_NAME:=Erp-dev}"
-: "${DEPLOY_ROLE_NAME:=erp-dev-github-deploy}"
+: "${DEPLOY_USER_NAME:=erp-dev-github-deploy}"
 
 export AWS_REGION AWS_ACCOUNT_ID STACK_NAME
 export AWS_DEFAULT_REGION="${AWS_REGION}"

@@ -30,6 +30,8 @@ public sealed class ErpDbContext(
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
     public DbSet<NumberRange> NumberRanges => Set<NumberRange>();
+    public DbSet<Mandant> Mandanten => Set<Mandant>();
+    public DbSet<MandantUser> MandantUsers => Set<MandantUser>();
 
     // Unqualified, the history table follows search_path: erp_owner resolves it to public, where it
     // has no CREATE, while databases migrated as the erp master user keep it in erp.
@@ -223,6 +225,34 @@ public sealed class ErpDbContext(
             entity.Property(x => x.Prefix).HasMaxLength(20);
             entity.HasIndex(x => new { x.TenantId, x.DocumentType, x.Year }).IsUnique();
             entity.HasQueryFilter(x => x.TenantId == tenantContext.TenantId);
+        });
+
+        modelBuilder.HasSequence<long>("mandant_number_seq").StartsAt(Mandant.FirstRegisteredNumber);
+
+        // Mandanten are the tenant registry itself, so they are read before a tenant is known and
+        // carry no row-level security, like tenant_memberships.
+        modelBuilder.Entity<Mandant>(entity =>
+        {
+            entity.ToTable("mandanten");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Number).HasDefaultValueSql("nextval('erp.mandant_number_seq')");
+            entity.Property(x => x.Firmenname).HasMaxLength(Mandant.FirmennameMaxLength);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            entity.Property(x => x.ApprovalTokenHash).HasMaxLength(64);
+            entity.Ignore(x => x.Label);
+            entity.HasIndex(x => x.Number).IsUnique();
+            entity.HasIndex(x => x.ApprovalTokenHash).IsUnique();
+        });
+
+        modelBuilder.Entity<MandantUser>(entity =>
+        {
+            entity.ToTable("mandant_users");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.UserName).HasMaxLength(64);
+            entity.Property(x => x.Email).HasMaxLength(MandantUser.EmailMaxLength);
+            entity.Property(x => x.CognitoSub).HasMaxLength(200);
+            entity.HasIndex(x => new { x.MandantId, x.UserName }).IsUnique();
+            entity.HasOne<Mandant>().WithMany().HasForeignKey(x => x.MandantId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

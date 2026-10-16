@@ -8,6 +8,7 @@ import * as ecr from 'aws-cdk-lib/aws-ecr'
 import * as ecs from 'aws-cdk-lib/aws-ecs'
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2'
 import * as events from 'aws-cdk-lib/aws-events'
+import * as iam from 'aws-cdk-lib/aws-iam'
 import * as kms from 'aws-cdk-lib/aws-kms'
 import * as logs from 'aws-cdk-lib/aws-logs'
 import * as rds from 'aws-cdk-lib/aws-rds'
@@ -19,6 +20,10 @@ import { Construct } from 'constructs'
 export interface ErpDevStackProps extends cdk.StackProps {
   environment: string
 }
+
+// Sends and receives registration mail. infra/scripts/ensure-ses-identity.sh verifies it outside
+// the stack, so a destroy does not cost another verification click.
+export const registrationMailbox = 'ckrause@cvs.de'
 
 export class ErpDevStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ErpDevStackProps) {
@@ -114,23 +119,14 @@ export class ErpDevStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     })
 
-    const localUrls = ['http://localhost:5173/', 'http://127.0.0.1:5173/']
-    const userPoolDomain = userPool.addDomain('HostedUi', {
-      cognitoDomain: {
-        // Must be concrete at synth (no unresolved tokens). Keep it unique to this project.
-        domainPrefix: `erp-cvstest-${environmentName}`.slice(0, 63).toLowerCase(),
-      },
-    })
     const userPoolClient = userPool.addClient('SpaClient', {
       generateSecret: false,
-      // Admin password auth is for the scripted smoke test. The browser still uses SRP.
-      authFlows: { userSrp: true, adminUserPassword: true },
-      oAuth: {
-        flows: { authorizationCodeGrant: true },
-        scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
-        callbackUrls: localUrls,
-        logoutUrls: localUrls,
-      },
+      // The browser login form sends Mandantennummer.user and password with USER_PASSWORD_AUTH
+      // over TLS. Admin password auth is for the scripted smoke test.
+      authFlows: { userSrp: true, userPassword: true, adminUserPassword: true },
+      // No Hosted UI: tokens come only from InitiateAuth, so the client has no OAuth redirect flow.
+      disableOAuth: true,
+      enableTokenRevocation: true,
       preventUserExistenceErrors: true,
     })
 
@@ -213,10 +209,14 @@ export class ErpDevStack extends cdk.Stack {
         Database__Username: 'erp_app',
         Authentication__Authority: `https://cognito-idp.${this.region}.amazonaws.com/${userPool.userPoolId}`,
         Authentication__ClientId: userPoolClient.userPoolClientId,
-        // domainName is the Cognito prefix only; Hosted UI host is prefix.auth.<region>.amazoncognito.com
-        Authentication__HostedUiDomain: `${userPoolDomain.domainName}.auth.${this.region}.amazoncognito.com`,
         // Self sign-up is off. A Cognito user with no row yet joins the synthetic tenant.
         Authentication__BootstrapTenantId: '11111111-1111-1111-1111-111111111111',
+        Registration__AwsRegion: this.region,
+        Registration__UserPoolId: userPool.userPoolId,
+        Registration__ApproverEmail: registrationMailbox,
+        Registration__FromEmail: registrationMailbox,
+        // CloudFront appends the viewer address, then the ALB appends CloudFront's.
+        ForwardedHeaders__ForwardLimit: '2',
       },
       secrets: {
         Database__Password: ecs.Secret.fromSecretsManager(appSecret, 'password'),
@@ -288,6 +288,21 @@ export class ErpDevStack extends cdk.Stack {
     eventBus.grantPutEventsTo(workerTask.taskRole)
     key.grantEncryptDecrypt(apiTask.taskRole)
     key.grantEncryptDecrypt(workerTask.taskRole)
+    userPool.grant(
+      apiTask.taskRole,
+      'cognito-idp:AdminCreateUser',
+      'cognito-idp:AdminSetUserPassword',
+      'cognito-idp:AdminGetUser',
+    )
+    // In the SES sandbox the recipient must be a verified identity too, so the resource covers
+    // every identity in the account. The sender stays pinned by the condition.
+    apiTask.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        actions: ['ses:SendEmail'],
+        resources: [`arn:aws:ses:${this.region}:${this.account}:identity/*`],
+        conditions: { StringEquals: { 'ses:FromAddress': registrationMailbox } },
+      }),
+    )
 
     const albSecurityGroup = new ec2.SecurityGroup(this, 'AlbSecurityGroup', {
       vpc,
@@ -388,10 +403,7 @@ export class ErpDevStack extends cdk.Stack {
       },
     })
     const publicBaseUrl = `https://${distribution.distributionDomainName}`
-    const hostedUrls = [...localUrls, `${publicBaseUrl}/`]
-    const spaClient = userPoolClient.node.defaultChild as cognito.CfnUserPoolClient
-    spaClient.callbackUrLs = hostedUrls
-    spaClient.logoutUrLs = hostedUrls
+    apiContainer.addEnvironment('Registration__PublicBaseUrl', publicBaseUrl)
 
     listener.addTargets('ApiTargets', {
       port: 8080,
@@ -412,9 +424,6 @@ export class ErpDevStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'AlbDnsName', { value: alb.loadBalancerDnsName })
     new cdk.CfnOutput(this, 'UserPoolId', { value: userPool.userPoolId })
     new cdk.CfnOutput(this, 'UserPoolClientId', { value: userPoolClient.userPoolClientId })
-    new cdk.CfnOutput(this, 'CognitoDomain', {
-      value: `${userPoolDomain.domainName}.auth.${this.region}.amazoncognito.com`,
-    })
     new cdk.CfnOutput(this, 'CognitoAuthority', {
       value: `https://cognito-idp.${this.region}.amazonaws.com/${userPool.userPoolId}`,
     })

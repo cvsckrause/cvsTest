@@ -1,3 +1,4 @@
+using Erp.Api.Registration;
 using Erp.BuildingBlocks;
 using Erp.Persistence;
 using Erp.Platform.Domain;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using Testcontainers.PostgreSql;
@@ -26,6 +28,8 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public Guid TenantA { get; } = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     public Guid TenantB { get; } = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+    public const long MandantNumberA = 901;
+    public const long MandantNumberB = 902;
     public TenantGraph SeedA { get; private set; }
     public TenantGraph SeedB { get; private set; }
     public string AdminConnectionString { get; private set; } = string.Empty;
@@ -33,6 +37,9 @@ public sealed class PostgresFixture : IAsyncLifetime
     public string WorkerConnectionString { get; private set; } = string.Empty;
     internal DatabaseProbe Probe { get; private set; } = null!;
     internal CapturedLogs Logs { get; } = new();
+    internal CapturingMailSender Mail { get; } = new();
+    internal FakeCognitoUserAdmin Cognito { get; } = new();
+    public const string ApproverEmail = "approver@example.test";
 
     public async Task InitializeAsync()
     {
@@ -96,13 +103,13 @@ public sealed class PostgresFixture : IAsyncLifetime
         Environment.SetEnvironmentVariable("ConnectionStrings__Erp", connectionString);
         Environment.SetEnvironmentVariable("Authentication__Authority", "https://example.invalid/");
         Environment.SetEnvironmentVariable("Authentication__ClientId", "test-client");
-        Environment.SetEnvironmentVariable(
-            "Authentication__HostedUiDomain",
-            "erp-test.auth.eu-north-1.amazoncognito.com");
         Environment.SetEnvironmentVariable("Authentication__Audience", "erp-api");
         Environment.SetEnvironmentVariable("DevelopmentIdentity__Enabled", "false");
         Environment.SetEnvironmentVariable("DevelopmentIdentity__TenantId", "");
         Environment.SetEnvironmentVariable("DevelopmentIdentity__UserId", "");
+        Environment.SetEnvironmentVariable("Registration__ApproverEmail", ApproverEmail);
+        Environment.SetEnvironmentVariable("Registration__PublicBaseUrl", "https://erp.example.test/");
+        Environment.SetEnvironmentVariable("Registration__PermitsPerHour", "10000");
 
         return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
@@ -110,6 +117,10 @@ public sealed class PostgresFixture : IAsyncLifetime
             builder.ConfigureLogging(logging => logging.AddProvider(Logs));
             builder.ConfigureTestServices(services =>
             {
+                services.RemoveAll<IMailSender>();
+                services.AddSingleton<IMailSender>(Mail);
+                services.RemoveAll<ICognitoUserAdmin>();
+                services.AddSingleton<ICognitoUserAdmin>(Cognito);
                 services.AddAuthentication()
                     .AddScheme<AuthenticationSchemeOptions, TestTenantHandler>(TestTenantHandler.SchemeName, _ => { });
                 services.PostConfigure<AuthenticationOptions>(options =>
@@ -167,6 +178,8 @@ public sealed class PostgresFixture : IAsyncLifetime
             .UseNpgsql(adminConnectionString)
             .Options;
         await using var db = new ErpDbContext(options, new TenantContext(Guid.NewGuid(), "membership-seed"));
+        db.Mandanten.Add(Mandant.Seed(TenantA, MandantNumberA, "A Handels GmbH", DateTimeOffset.UtcNow));
+        db.Mandanten.Add(Mandant.Seed(TenantB, MandantNumberB, "B Vertrieb GmbH", DateTimeOffset.UtcNow));
         db.TenantMemberships.Add(TenantMembership.Grant("integration-a", TenantA, isDefault: true));
         db.TenantMemberships.Add(TenantMembership.Grant("integration-b", TenantB, isDefault: true));
         await db.SaveChangesAsync();

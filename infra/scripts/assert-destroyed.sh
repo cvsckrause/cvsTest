@@ -16,9 +16,10 @@ for repo in erp-dev-api erp-dev-worker erp-dev-migrator; do
   aws ecr describe-repositories --region "${AWS_REGION}" --repository-names "${repo}" >/dev/null
 done
 
-aws iam get-role --role-name "${DEPLOY_ROLE_NAME}" >/dev/null
-aws iam get-open-id-connect-provider \
-  --open-id-connect-provider-arn "arn:aws:iam::${AWS_ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com" \
-  >/dev/null
+if ! aws sesv2 get-email-identity --region "${AWS_REGION}" --email-identity "${REGISTRATION_MAILBOX:-ckrause@cvs.de}" >/dev/null 2>&1; then
+  echo "SES identity ${REGISTRATION_MAILBOX:-ckrause@cvs.de} is missing. The next deploy recreates it and needs another verification click." >&2
+fi
 
-echo "Destroy left CDKToolkit, the three ECR repositories, the GitHub OIDC provider, and ${DEPLOY_ROLE_NAME}."
+aws iam get-user --user-name "${DEPLOY_USER_NAME}" >/dev/null
+
+echo "Destroy left CDKToolkit, the three ECR repositories, and the deploy user ${DEPLOY_USER_NAME}."

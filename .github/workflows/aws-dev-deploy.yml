@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write
   contents: read
 
 concurrency:
@@ -28,7 +27,9 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::098981324459:role/erp-dev-github-deploy
+          # Secrets of the aws-dev environment, written by infra/scripts/bootstrap-github-deploy.ps1.
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-north-1
 
       - name: Setup Node.js
@@ -44,6 +45,9 @@ jobs:
 
       - name: Ensure ECR repositories
         run: bash infra/scripts/ensure-ecr-repos.sh
+
+      - name: Ensure SES identity
+        run: bash infra/scripts/ensure-ses-identity.sh
 
       - name: Build and push images by digest
         env:

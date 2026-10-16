@@ -27,7 +27,7 @@ test('createArticle sends Authorization when the cognito session has an access t
     setTenantId: (tenantId) => {
       session.tenantId = tenantId
     },
-    login: async () => undefined,
+    login: async () => session,
     logout: async () => undefined,
     needsLogin: () => false,
   }
@@ -37,7 +37,6 @@ test('createArticle sends Authorization when the cognito session has an access t
       mode: 'cognito',
       authority: 'https://example.invalid',
       clientId: 'client',
-      hostedUiOrigin: 'https://example.invalid',
     }),
     () => adapter,
   )

@@ -105,7 +105,15 @@ const invoice = {
   createdAt: '2026-10-15T10:01:00.000Z',
 }
 
+const localSession = {
+  tenantId: '11111111-1111-1111-1111-111111111111',
+  mandantNumber: 100,
+  firmenname: 'Northstar Demo GmbH',
+  userName: 'local-developer',
+}
+
 function route(url: string) {
+  if (url.endsWith('/session')) return jsonResponse(localSession)
   if (url.includes('/sales-orders/') && url.includes('/deliveries')) return jsonResponse([delivery])
   if (url.includes('/sales-orders/') && url.includes('/invoices')) return jsonResponse([invoice])
   if (url.includes('/sales-orders/')) return jsonResponse(salesOrder)
@@ -241,10 +249,11 @@ test('reuses the same Idempotency-Key when a receipt request fails and is retrie
   fireEvent.click(screen.getByTitle('Lager'))
   await screen.findByRole('heading', { name: 'Bestand & Wareneingang' })
 
-  fireEvent.click(screen.getByRole('button', { name: 'Wareneingang buchen' }))
+  // While the workspace loads, the submit button reads "Bucht …".
+  fireEvent.click(await screen.findByRole('button', { name: 'Wareneingang buchen' }))
   expect((await screen.findAllByText('temporary failure')).length).toBeGreaterThan(0)
 
-  fireEvent.click(screen.getByRole('button', { name: 'Wareneingang buchen' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Wareneingang buchen' }))
   expect((await screen.findAllByText(/Wareneingang 1 × BIKE-001 gebucht/)).length).toBeGreaterThan(0)
 
   const receiptCalls = fetchMock.mock.calls.filter(([requestUrl]) => String(requestUrl).includes('/stock/receipts'))
@@ -285,11 +294,11 @@ test('does not mint a new Idempotency-Key when stock refresh fails after a succe
   fireEvent.click(screen.getByTitle('Lager'))
   await screen.findByRole('heading', { name: 'Bestand & Wareneingang' })
 
-  fireEvent.click(screen.getByRole('button', { name: 'Wareneingang buchen' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Wareneingang buchen' }))
   expect((await screen.findAllByText(/Wareneingang 1 × BIKE-001 gebucht/)).length).toBeGreaterThan(0)
   expect(screen.getAllByText(/Anzeige konnte nicht aktualisiert werden/).length).toBeGreaterThan(0)
 
-  fireEvent.click(screen.getByRole('button', { name: 'Wareneingang buchen' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Wareneingang buchen' }))
   await screen.findAllByText(/Wareneingang 1 × BIKE-001 gebucht/)
 
   const receiptCalls = fetchMock.mock.calls.filter(([requestUrl]) => String(requestUrl).includes('/stock/receipts'))
@@ -406,9 +415,20 @@ test('hides release and cancel on a cancelled order', async () => {
 const tenantA = '11111111-1111-1111-1111-111111111111'
 const tenantB = '22222222-2222-2222-2222-222222222222'
 
-async function bootCognito(defaultTenantId: string, memberships: { tenantId: string; isDefault: boolean }[]) {
+type TestMembership = {
+  tenantId: string
+  isDefault: boolean
+  mandantNumber?: number | null
+  firmenname?: string | null
+}
+
+async function bootCognito(
+  defaultTenantId: string,
+  memberships: TestMembership[],
+  session: unknown = { tenantId: defaultTenantId, mandantNumber: null, firmenname: null, userName: 'kunde' },
+) {
   let tenantId: string | null = null
-  const session: AuthSession = {
+  const authSession: AuthSession = {
     mode: 'cognito',
     authenticated: true,
     accessToken: 'access-token',
@@ -416,13 +436,13 @@ async function bootCognito(defaultTenantId: string, memberships: { tenantId: str
   }
   const adapter: AuthAdapter = {
     mode: 'cognito',
-    ensureSession: async () => session,
+    ensureSession: async () => authSession,
     getAccessToken: async () => 'access-token',
     getTenantId: () => tenantId,
     setTenantId: (next) => {
       tenantId = next
     },
-    login: async () => undefined,
+    login: async () => authSession,
     logout: async () => undefined,
     needsLogin: () => false,
   }
@@ -431,7 +451,6 @@ async function bootCognito(defaultTenantId: string, memberships: { tenantId: str
       mode: 'cognito',
       authority: 'https://auth.example.test',
       clientId: 'client',
-      hostedUiOrigin: 'https://auth.example.test',
     }),
     () => adapter,
   )
@@ -440,25 +459,57 @@ async function bootCognito(defaultTenantId: string, memberships: { tenantId: str
     if (url.includes('/me/memberships')) {
       return jsonResponse({ memberships, defaultTenantId })
     }
+    if (url.endsWith('/session')) {
+      return session === null ? jsonResponse({ detail: 'down' }, false, 500) : jsonResponse(session)
+    }
     return route(url)
   })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
 
-test('keeps the local status line when no Mandant session is present', async () => {
+test('shows the local Mandant from the session', async () => {
   render(<App />)
-  expect(await screen.findByText('Mandant 100 · Hauptlager MAIN')).toBeInTheDocument()
+  expect(await screen.findByText('Mandant 100 · Northstar Demo GmbH')).toBeInTheDocument()
   expect(screen.queryByRole('combobox', { name: 'Mandant wechseln' })).not.toBeInTheDocument()
 })
 
-test('shows one Mandant id and no switcher', async () => {
+test('shows the Mandant number and Firmenname for one membership and no switcher', async () => {
+  await bootCognito(
+    tenantA,
+    [{ tenantId: tenantA, isDefault: true, mandantNumber: 1001, firmenname: 'Nordlicht GmbH' }],
+    { tenantId: tenantA, mandantNumber: 1001, firmenname: 'Nordlicht GmbH', userName: 'kunde' },
+  )
+  render(<AuthGate><App /></AuthGate>)
+
+  expect(await screen.findByText('Mandant 1001 · Nordlicht GmbH')).toBeInTheDocument()
+  expect(screen.queryByRole('combobox', { name: 'Mandant wechseln' })).not.toBeInTheDocument()
+})
+
+test('falls back to the tenant id when the Mandant is not registered', async () => {
   await bootCognito(tenantA, [{ tenantId: tenantA, isDefault: true }])
   render(<AuthGate><App /></AuthGate>)
 
-  expect(await screen.findByText(tenantA)).toBeInTheDocument()
-  expect(screen.queryByRole('combobox', { name: 'Mandant wechseln' })).not.toBeInTheDocument()
-  expect(screen.queryByText('Mandant 100 · Hauptlager MAIN')).not.toBeInTheDocument()
+  expect(await screen.findByText(`Mandant ${tenantA}`)).toBeInTheDocument()
+})
+
+test('shows a neutral Mandant line when the session cannot be loaded', async () => {
+  await bootCognito(tenantA, [{ tenantId: tenantA, isDefault: true }], null)
+  render(<AuthGate><App /></AuthGate>)
+
+  expect(await screen.findByText('Mandant –')).toBeInTheDocument()
+})
+
+test('labels the Mandant switcher with number and Firmenname', async () => {
+  await bootCognito(tenantA, [
+    { tenantId: tenantA, isDefault: true, mandantNumber: 1001, firmenname: 'Nordlicht GmbH' },
+    { tenantId: tenantB, isDefault: false, mandantNumber: 1002, firmenname: 'Südwind AG' },
+  ])
+  render(<AuthGate><App /></AuthGate>)
+
+  const select = await screen.findByRole('combobox', { name: 'Mandant wechseln' })
+  expect(within(select).getByRole('option', { name: 'Mandant 1001 · Nordlicht GmbH' })).toBeInTheDocument()
+  expect(within(select).getByRole('option', { name: 'Mandant 1002 · Südwind AG' })).toBeInTheDocument()
 })
 
 test('switches Mandant, drops the open document, and reloads customers', async () => {
