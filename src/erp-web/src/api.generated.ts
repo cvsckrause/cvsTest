@@ -759,6 +759,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SessionResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/stock": {
         parameters: {
             query?: never;
@@ -1058,7 +1093,10 @@ export interface components {
             memberships: components["schemas"]["MembershipResponse"][];
         };
         MembershipResponse: {
+            firmenname: null | string;
             isDefault: boolean;
+            /** Format: int64 */
+            mandantNumber: null | number | string;
             /** Format: uuid */
             tenantId: string;
         };
@@ -1097,6 +1135,14 @@ export interface components {
             netAmount: number | string;
             orderNumber: string;
             status: string;
+        };
+        SessionResponse: {
+            firmenname: null | string;
+            /** Format: int64 */
+            mandantNumber: null | number | string;
+            /** Format: uuid */
+            tenantId: string;
+            userName: string;
         };
         StockMovementResponse: {
             /** Format: uuid */

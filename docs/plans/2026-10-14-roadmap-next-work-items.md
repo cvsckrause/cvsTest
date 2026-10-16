@@ -127,8 +127,8 @@ flowchart LR
 | 8 | R-17 DB roles + seed split | R-08 UI PKCE login *(after R-07 + R-09)* |
 | 9 | R-18 Observability + alarms | R-16 Invoice DACH minimum |
 | 10 | R-19 Scripted deploy | R-20 Idempotency fingerprint |
-| 11 | | R-21 UI build stamp *(can ship early; soft depends on R-10 shell)* |
-| 12 | | R-22 Prefix invoice numbers with `R-` *(Wave 0; after R-14)* |
+| 11 | R-23 Mandant registration *(sub-issues R-23a to R-23d, in that order)* | R-21 UI build stamp *(can ship early; soft depends on R-10 shell)* |
+| 12 | R-24 SES production access *(after R-23c)* | R-22 Prefix invoice numbers with `R-` *(Wave 0; after R-14)* |
 
 Sync points: R-02 merges before any other `Program.cs` change. R-11 merges before R-12. R-07, R-08, and R-09 ship together to the AWS cell, with a cost-gate update for R-09.
 
@@ -554,6 +554,25 @@ Sync points: R-02 merges before any other `Program.cs` change. R-11 merges befor
 - Login with the pending Mandant fails. After approval, login requires the three fields and the status bar shows the Firmenname entered at registration.
 
 **Out of scope.** Roles (Buchhalter, Administrator), more than the user `kunde`, and provisioning a new customer database (ADR-002).
+
+**Split (accepted 2026-10-16).** Login calls Cognito `InitiateAuth` with `USER_PASSWORD_AUTH` from the in-app form. Mail goes through SES in sandbox mode, with production access deferred to R-24.
+
+| Sub-issue | Scope | Depends on |
+| --- | --- | --- |
+| [R-23a #83](https://github.com/cvsckrause/cvsTest/issues/83) | Mandant registry, `GET /api/v1/session`, status bar `Mandant {number} · {Firmenname}` | none |
+| [R-23b #84](https://github.com/cvsckrause/cvsTest/issues/84) | Anonymous registration and approval API, approval token, mail and Cognito ports with fakes | R-23a |
+| [R-23c #85](https://github.com/cvsckrause/cvsTest/issues/85) | AWS SDK adapters, CDK (`USER_PASSWORD_AUTH`, IAM, SES identity, environment), smoke check | R-23b |
+| [R-23d #86](https://github.com/cvsckrause/cvsTest/issues/86) | Three-field login, `/registrieren`, `/freigabe` | R-23a, R-23b, R-23c |
+
+### R-24 — Request SES production access for registration mail
+
+`lane:A` `priority:P3` `size:S` `area:infra` `type:tech-debt` — depends on: R-23c — [#87](https://github.com/cvsckrause/cvsTest/issues/87)
+
+**Context.** In the SES sandbox, mail only reaches verified addresses, so a real registrant does not receive their credentials.
+
+**Scope.** Request production access, verify a sending domain with DKIM, record bounces and complaints, and update `docs/operations/aws-dev-cell.md` and the stack.
+
+**Acceptance.** An approval for an unverified registrant mailbox delivers the credentials mail. Bounces and complaints are recorded.
 
 ---
 

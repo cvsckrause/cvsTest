@@ -335,7 +335,8 @@ internal sealed class ApiFixture : IAsyncDisposable
         string? configuredUserId = null,
         IReadOnlyList<TenantMembership>? memberships = null,
         string? tenantHeader = null,
-        Guid? bootstrapTenantId = null)
+        Guid? bootstrapTenantId = null,
+        IReadOnlyList<MandantSummary>? mandanten = null)
     {
         var observed = new ObservedTenant();
         var factory = CreateFactory(
@@ -347,7 +348,8 @@ internal sealed class ApiFixture : IAsyncDisposable
             user,
             observed,
             memberships,
-            bootstrapTenantId);
+            bootstrapTenantId,
+            mandanten);
         return new ApiFixture(factory, observed, tenantHeader);
     }
 
@@ -360,7 +362,8 @@ internal sealed class ApiFixture : IAsyncDisposable
         ClaimsPrincipal? user = null,
         ObservedTenant? observed = null,
         IReadOnlyList<TenantMembership>? memberships = null,
-        Guid? bootstrapTenantId = null)
+        Guid? bootstrapTenantId = null,
+        IReadOnlyList<MandantSummary>? mandanten = null)
     {
         observed ??= new ObservedTenant();
         user ??= new ClaimsPrincipal(new ClaimsIdentity());
@@ -392,6 +395,8 @@ internal sealed class ApiFixture : IAsyncDisposable
                 services.AddSingleton<IStartupFilter, TenantObservationFilter>();
                 services.RemoveAll<ITenantMemberships>();
                 services.AddSingleton<ITenantMemberships>(new FakeTenantMemberships(memberships ?? []));
+                services.RemoveAll<IMandantDirectory>();
+                services.AddSingleton<IMandantDirectory>(new FakeMandantDirectory(mandanten ?? []));
                 if (authenticationEnabled)
                 {
                     services.AddAuthentication()
@@ -446,6 +451,16 @@ internal sealed class FakeTenantMemberships : ITenantMemberships
 
         return Task.CompletedTask;
     }
+}
+
+internal sealed class FakeMandantDirectory(IReadOnlyList<MandantSummary> mandanten) : IMandantDirectory
+{
+    public Task<IReadOnlyDictionary<Guid, MandantSummary>> FindActiveAsync(
+        IReadOnlyCollection<Guid> tenantIds,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyDictionary<Guid, MandantSummary>>(mandanten
+            .Where(mandant => tenantIds.Contains(mandant.TenantId))
+            .ToDictionary(mandant => mandant.TenantId));
 }
 
 internal sealed class TestPrincipal(ClaimsPrincipal user)

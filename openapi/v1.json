@@ -443,8 +443,23 @@
       },
       "MembershipResponse": {
         "properties": {
+          "firmenname": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "isDefault": {
             "type": "boolean"
+          },
+          "mandantNumber": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
           },
           "tenantId": {
             "format": "uuid",
@@ -453,7 +468,9 @@
         },
         "required": [
           "tenantId",
-          "isDefault"
+          "isDefault",
+          "mandantNumber",
+          "firmenname"
         ],
         "type": "object"
       },
@@ -581,6 +598,39 @@
           "status",
           "netAmount",
           "createdAt"
+        ],
+        "type": "object"
+      },
+      "SessionResponse": {
+        "properties": {
+          "firmenname": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "mandantNumber": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "tenantId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "userName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenantId",
+          "mandantNumber",
+          "firmenname",
+          "userName"
         ],
         "type": "object"
       },
@@ -1541,6 +1591,25 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SalesOrderResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Erp.Api"
+        ]
+      }
+    },
+    "/api/v1/session": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
                 }
               }
             },

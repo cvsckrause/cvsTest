@@ -23,6 +23,7 @@ export type Invoice = Json<Schemas['InvoiceResponse']>
 export type StockBalanceRow = Json<Schemas['StockResponse']>
 export type StockMovementRow = Json<Schemas['StockMovementResponse']>
 export type StockReceipt = Json<Schemas['StockReceiptResponse']>
+export type Session = Json<Schemas['SessionResponse']>
 
 const baseUrl = import.meta.env.VITE_API_URL ?? '/api/v1'
 
@@ -77,6 +78,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const erpApi = {
+  session: () => request<Session>('/session'),
   customers: (after?: string) =>
     request<Customer[]>(`/customers${after ? `?after=${encodeURIComponent(after)}` : ''}`),
   articles: (q?: string) => request<Article[]>(`/articles${q ? `?q=${encodeURIComponent(q)}` : ''}`),

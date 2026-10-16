@@ -26,6 +26,8 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public Guid TenantA { get; } = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     public Guid TenantB { get; } = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+    public const long MandantNumberA = 901;
+    public const long MandantNumberB = 902;
     public TenantGraph SeedA { get; private set; }
     public TenantGraph SeedB { get; private set; }
     public string AdminConnectionString { get; private set; } = string.Empty;
@@ -167,6 +169,8 @@ public sealed class PostgresFixture : IAsyncLifetime
             .UseNpgsql(adminConnectionString)
             .Options;
         await using var db = new ErpDbContext(options, new TenantContext(Guid.NewGuid(), "membership-seed"));
+        db.Mandanten.Add(Mandant.Seed(TenantA, MandantNumberA, "A Handels GmbH", DateTimeOffset.UtcNow));
+        db.Mandanten.Add(Mandant.Seed(TenantB, MandantNumberB, "B Vertrieb GmbH", DateTimeOffset.UtcNow));
         db.TenantMemberships.Add(TenantMembership.Grant("integration-a", TenantA, isDefault: true));
         db.TenantMemberships.Add(TenantMembership.Grant("integration-b", TenantB, isDefault: true));
         await db.SaveChangesAsync();
