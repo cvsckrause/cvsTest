@@ -137,14 +137,16 @@ static async Task EnsureApplicationRolesAsync(
         $roles$;
         """);
 
+    // RDS master is not a superuser, so it cannot mention SUPERUSER or BYPASSRLS here.
+    // CREATE ROLE above already sets those attributes.
     await ExecuteAsync(connection, $"""
-        ALTER ROLE erp_owner WITH LOGIN PASSWORD {QuoteLiteral(ownerPassword)} NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+        ALTER ROLE erp_owner WITH LOGIN PASSWORD {QuoteLiteral(ownerPassword)};
         """);
     await ExecuteAsync(connection, $"""
-        ALTER ROLE erp_app WITH LOGIN PASSWORD {QuoteLiteral(appPassword)} NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+        ALTER ROLE erp_app WITH LOGIN PASSWORD {QuoteLiteral(appPassword)};
         """);
     await ExecuteAsync(connection, $"""
-        ALTER ROLE erp_worker WITH LOGIN PASSWORD {QuoteLiteral(workerPassword)} NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+        ALTER ROLE erp_worker WITH LOGIN PASSWORD {QuoteLiteral(workerPassword)};
         """);
 
     await ExecuteAsync(connection, """
@@ -158,6 +160,8 @@ static async Task EnsureApplicationRolesAsync(
         BEGIN
             EXECUTE format('GRANT CONNECT, CREATE ON DATABASE %I TO erp_owner', current_database());
             EXECUTE format('GRANT CONNECT ON DATABASE %I TO erp_app, erp_worker', current_database());
+            -- EF creates __EFMigrationsHistory in public. PostgreSQL 15 revoked CREATE there from PUBLIC.
+            GRANT CREATE ON SCHEMA public TO erp_owner;
         END
         $db$;
         """);
@@ -217,7 +221,10 @@ static async Task RevokeDefinerMembershipAsync()
         adminPassword);
     await using var connection = new NpgsqlConnection(adminConnectionString);
     await connection.OpenAsync();
-    await ExecuteAsync(connection, "REVOKE erp_outbox_definer FROM erp_owner;");
+    await ExecuteAsync(connection, """
+        REVOKE erp_outbox_definer FROM erp_owner;
+        REVOKE CREATE ON SCHEMA public FROM erp_owner;
+        """);
 }
 
 static async Task SeedMembershipsAsync(ErpDbContext db, Guid tenantId)
