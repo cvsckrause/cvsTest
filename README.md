@@ -30,7 +30,7 @@ npm run dev --prefix src/erp-web
 - API: `http://localhost:5080` (or the AWS cell ALB)
 - UI (local): `http://127.0.0.1:5173` with `/api` proxied via `ERP_API_ORIGIN`
 - UI (AWS cell): `http://<AlbDnsName>/` — same origin as the API; no Vite required
-- After roadmap **R-21**, the UI status bar shows `version · built-at UTC · git SHA` so you can tell which image is live
+- After roadmap **R-21**, the UI status bar shows `version · dd.MM.yyyy / HH:mm:ss Europe/Berlin · git SHA` so you can tell which image is live
 - OpenAPI: `http://localhost:5080/openapi/v1.json`
 
 Local identity comes from `DevelopmentIdentity` in `appsettings.Development.json` and is used only when authentication is off. Cognito PKCE is reserved for the AWS cell.
