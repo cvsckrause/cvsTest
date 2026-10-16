@@ -45,6 +45,9 @@ jobs:
       - name: Ensure ECR repositories
         run: bash infra/scripts/ensure-ecr-repos.sh
 
+      - name: Ensure SES identity
+        run: bash infra/scripts/ensure-ses-identity.sh
+
       - name: Build and push images by digest
         env:
           IMAGE_TAG: git-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}

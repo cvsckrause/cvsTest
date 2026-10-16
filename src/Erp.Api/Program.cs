@@ -1,4 +1,7 @@
 using System.Threading.RateLimiting;
+using Amazon;
+using Amazon.CognitoIdentityProvider;
+using Amazon.SimpleEmailV2;
 using Erp.Api;
 using Erp.Api.Registration;
 using Erp.BuildingBlocks;
@@ -6,6 +9,7 @@ using Erp.Observability;
 using Erp.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
@@ -48,7 +52,16 @@ builder.Services.AddScoped<IMandantDirectory, EfMandantDirectory>();
 builder.Services.Configure<RegistrationOptions>(builder.Configuration.GetSection(RegistrationOptions.Section));
 builder.Services.TryAddSingleton(TimeProvider.System);
 builder.Services.AddScoped<MandantRegistration>();
-if (builder.Environment.IsDevelopment())
+var registrationFromEmail = builder.Configuration["Registration:FromEmail"];
+var registrationUserPoolId = builder.Configuration["Registration:UserPoolId"];
+if (!string.IsNullOrWhiteSpace(registrationFromEmail))
+{
+    var region = RequiredAwsRegion(builder.Configuration);
+    builder.Services.AddSingleton<IAmazonSimpleEmailServiceV2>(_ => new AmazonSimpleEmailServiceV2Client(region));
+    builder.Services.AddSingleton<IMailSender>(services =>
+        new SesMailSender(services.GetRequiredService<IAmazonSimpleEmailServiceV2>(), registrationFromEmail));
+}
+else if (builder.Environment.IsDevelopment())
 {
     builder.Services.AddSingleton<IMailSender, DevelopmentMailSender>();
 }
@@ -57,13 +70,34 @@ else
     builder.Services.AddSingleton<IMailSender, UnconfiguredMailSender>();
 }
 
-if (authenticationEnabled)
+if (!string.IsNullOrWhiteSpace(registrationUserPoolId))
+{
+    var region = RequiredAwsRegion(builder.Configuration);
+    builder.Services.AddSingleton<IAmazonCognitoIdentityProvider>(_ => new AmazonCognitoIdentityProviderClient(region));
+    builder.Services.AddSingleton<ICognitoUserAdmin>(services =>
+        new AwsCognitoUserAdmin(services.GetRequiredService<IAmazonCognitoIdentityProvider>(), registrationUserPoolId));
+}
+else if (authenticationEnabled)
 {
     builder.Services.AddSingleton<ICognitoUserAdmin, UnconfiguredCognitoUserAdmin>();
 }
 else
 {
     builder.Services.AddSingleton<ICognitoUserAdmin, LocalCognitoUserAdmin>();
+}
+
+// The rate limit partitions by client IP, so behind CloudFront and the ALB the API has to
+// read X-Forwarded-For. The limit counts proxy hops from the right; earlier entries are client-controlled.
+var forwardLimit = builder.Configuration.GetValue<int?>("ForwardedHeaders:ForwardLimit");
+if (forwardLimit is > 0)
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
+        options.ForwardLimit = forwardLimit;
+        options.KnownProxies.Clear();
+        options.KnownIPNetworks.Clear();
+    });
 }
 
 var registrationPermits = builder.Configuration.GetValue<int?>("Registration:PermitsPerHour") ?? 10;
@@ -117,6 +151,11 @@ if (authenticationEnabled)
 }
 
 var app = builder.Build();
+if (forwardLimit is > 0)
+{
+    app.UseForwardedHeaders();
+}
+
 app.UseExceptionHandler();
 if (developmentIdentity.Enabled && !app.Environment.IsDevelopment())
 {
@@ -294,6 +333,14 @@ static string BuildConnectionString(IConfiguration configuration)
         Password = configuration["Database:Password"] ?? throw new InvalidOperationException("Database:Password is required."),
         SslMode = SslMode.Require
     }.ConnectionString;
+}
+
+static RegionEndpoint RequiredAwsRegion(IConfiguration configuration)
+{
+    var region = configuration["Registration:AwsRegion"];
+    return string.IsNullOrWhiteSpace(region)
+        ? throw new InvalidOperationException("Registration:AwsRegion is required when SES or Cognito administration is configured.")
+        : RegionEndpoint.GetBySystemName(region);
 }
 
 public sealed class RequestTenantContext : ITenantContext

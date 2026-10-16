@@ -337,7 +337,9 @@ internal sealed class ApiFixture : IAsyncDisposable
         string? tenantHeader = null,
         Guid? bootstrapTenantId = null,
         IReadOnlyList<MandantSummary>? mandanten = null,
-        int? registrationPermits = null)
+        int? registrationPermits = null,
+        bool awsRegistration = false,
+        int? forwardLimit = null)
     {
         var observed = new ObservedTenant();
         var factory = CreateFactory(
@@ -351,9 +353,13 @@ internal sealed class ApiFixture : IAsyncDisposable
             memberships,
             bootstrapTenantId,
             mandanten,
-            registrationPermits);
+            registrationPermits,
+            awsRegistration,
+            forwardLimit);
         return new ApiFixture(factory, observed, tenantHeader);
     }
+
+    public IServiceProvider Services => _factory.Services;
 
     public static WebApplicationFactory<Program> CreateFactory(
         string environment,
@@ -366,10 +372,16 @@ internal sealed class ApiFixture : IAsyncDisposable
         IReadOnlyList<TenantMembership>? memberships = null,
         Guid? bootstrapTenantId = null,
         IReadOnlyList<MandantSummary>? mandanten = null,
-        int? registrationPermits = null)
+        int? registrationPermits = null,
+        bool awsRegistration = false,
+        int? forwardLimit = null)
     {
         observed ??= new ObservedTenant();
         Environment.SetEnvironmentVariable("Registration__PermitsPerHour", registrationPermits?.ToString());
+        Environment.SetEnvironmentVariable("Registration__FromEmail", awsRegistration ? "sender@example.test" : null);
+        Environment.SetEnvironmentVariable("Registration__UserPoolId", awsRegistration ? "eu-north-1_test" : null);
+        Environment.SetEnvironmentVariable("Registration__AwsRegion", awsRegistration ? "eu-north-1" : null);
+        Environment.SetEnvironmentVariable("ForwardedHeaders__ForwardLimit", forwardLimit?.ToString());
         user ??= new ClaimsPrincipal(new ClaimsIdentity());
         Environment.SetEnvironmentVariable(
             "ConnectionStrings__Erp",

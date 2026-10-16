@@ -136,6 +136,24 @@ request() {
   printf '%s' "${body}"
 }
 
+session="$(request GET /api/v1/session)"
+if ! jq -e --arg user "${SMOKE_USER}" '.tenantId == "11111111-1111-1111-1111-111111111111" and .userName == $user' \
+  <<<"${session}" >/dev/null; then
+  echo "GET /api/v1/session returned an unexpected body: ${session}" >&2
+  exit 1
+fi
+echo "Session resolves the bootstrap Mandant for ${SMOKE_USER}."
+
+# An unknown token returns 404 before any Cognito or SES call, so this sends no mail.
+approve_status="$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' \
+  -H "Content-Type: application/json" -X POST -d '{"token":"smoke-unknown"}' \
+  "${BASE}/api/v1/registrations/approve")"
+if [[ "${approve_status}" != "404" ]]; then
+  echo "Anonymous POST /api/v1/registrations/approve returned ${approve_status}, expected 404." >&2
+  exit 1
+fi
+echo "Anonymous approval endpoint is reachable through CloudFront."
+
 suffix="${RUN_ID}"
 customer="$(request POST /api/v1/customers "$(jq -nc --arg n "SMK-${suffix}" '{number:$n,name:"Smoke Customer"}')")"
 customer_id="$(jq -er '.id' <<<"${customer}")"
