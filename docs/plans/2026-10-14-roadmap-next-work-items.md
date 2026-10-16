@@ -514,6 +514,25 @@ Sync points: R-02 merges before any other `Program.cs` change. R-11 merges befor
 
 **Out of scope.** Semver release process, `GET /version` API (optional follow-up), CloudFront cache busting beyond a normal image roll.
 
+### R-23 — Register a Mandant from the login page
+
+`lane:A` `priority:P3` `size:L` `area:api,web,persistence,infra` `type:feature` — depends on: none
+
+**Context.** A visitor must be able to request a new Mandant without an existing session. Decisions are accepted in [ADR-005](../architecture/adr/ADR-005-mandant-registration.md). Do not start this ahead of the current Dev A order (R-17, R-18, R-19) unless Christian pulls it forward.
+
+**Scope.**
+- Login page: button `Neuen Mandanten erstellen`, form with required Firmenname and email. Create a pending Mandant and user `kunde`. Mail `ckrause@cvs.de` an approval link. Do not create the Cognito user and do not send the password yet.
+- Approval link: create Cognito user `{mandantennummer}.kunde`, set a permanent password that meets the pool policy, mail Mandantennummer, user, and password to the registrant, then mark the Mandant active.
+- Every later login asks for Mandantennummer, User, and Passwort, with nothing prefilled. Email is contact data, not the login name.
+- Status bar shows `Mandant {number} · {Firmenname}`.
+
+**Acceptance.**
+- A registration does not produce a Cognito user and does not mail the customer. It does mail the approver.
+- Using the approval link once enables `kunde`. A second use does not rotate the password.
+- Login with the pending Mandant fails. After approval, login requires the three fields and the status bar shows the Firmenname entered at registration.
+
+**Out of scope.** Roles (Buchhalter, Administrator), more than the user `kunde`, and provisioning a new customer database (ADR-002).
+
 ---
 
 ## Wave 3 — next business milestone (epics)
