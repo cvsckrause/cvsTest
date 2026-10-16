@@ -69,7 +69,7 @@ Smoke against `https://<DistributionDomainName>`:
 3. `POST /api/v1/customers` then `POST /api/v1/articles`
 4. `POST /api/v1/sales-orders` with `Idempotency-Key`
 5. `POST /api/v1/sales-orders/{id}/release`
-6. Confirm a delivery and invoice appear after the worker poll
+6. Confirm a delivery and invoice appear after the worker poll, with the delivery number reading `LS-n` and the invoice number reading `R-n`
 
 ## Destroy
 
