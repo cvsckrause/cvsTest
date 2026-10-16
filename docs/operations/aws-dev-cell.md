@@ -9,7 +9,7 @@ Lowest-cost disposable environment for the trading slice. It is not production-s
 | `eu-central-1` | `eu-north-1` |
 | Private Fargate, no public task IPs, NAT/VPC endpoints | Public subnets + public task IPs, no NAT Gateway |
 | Multi-AZ RDS, two API tasks, WAF, custom domain | Single-AZ `db.t4g.micro`, one API task, CloudFront default certificate in front of an HTTP ALB |
-| Cognito required for API access | Cognito is provisioned; API still uses the development tenant until PKCE is wired |
+| Cognito required for API access | The UI uses hosted-UI PKCE when the API has an authority. A pool user's `sub` must equal `tenant_memberships.user_id`, or the API returns 403 |
 
 ## Continuously billed resources
 
