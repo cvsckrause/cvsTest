@@ -177,6 +177,13 @@ static async Task EnsureApplicationRolesAsync(
 
             EXECUTE 'ALTER SCHEMA erp OWNER TO erp_owner';
 
+            -- ErpDbContext keeps the history in erp. A cell first migrated as erp_owner with an
+            -- unqualified history table has it in public instead.
+            IF to_regclass('public."__EFMigrationsHistory"') IS NOT NULL
+               AND to_regclass('erp."__EFMigrationsHistory"') IS NULL THEN
+                EXECUTE 'ALTER TABLE public."__EFMigrationsHistory" SET SCHEMA erp';
+            END IF;
+
             FOR obj IN
                 SELECT c.relname, c.relkind
                 FROM pg_class c

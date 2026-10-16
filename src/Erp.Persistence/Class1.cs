@@ -6,6 +6,7 @@ using Erp.Platform.Domain;
 using Erp.Sales.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Erp.Persistence;
 
@@ -29,6 +30,11 @@ public sealed class ErpDbContext(
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
     public DbSet<NumberRange> NumberRanges => Set<NumberRange>();
+
+    // Unqualified, the history table follows search_path: erp_owner resolves it to public, where it
+    // has no CREATE, while databases migrated as the erp master user keep it in erp.
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.UseNpgsql(npgsql => npgsql.MigrationsHistoryTable(HistoryRepository.DefaultTableName, "erp"));
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
