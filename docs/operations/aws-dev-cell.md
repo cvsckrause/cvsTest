@@ -58,13 +58,21 @@ Then run **AWS dev cell deploy** (`workflow_dispatch` on `.github/workflows/aws-
 5. Runs the migrator task and waits until it exits 0.
 6. Runs `infra/scripts/smoke-dev-cell.sh`.
 
-The migrator uses the RDS master password only to install `erp_owner`, `erp_app`, and `erp_worker`, then applies migrations as `erp_owner`. The API connects as `erp_app` (DML only). The worker connects as `erp_worker` (DML plus `claim_outbox`). That run does not load demo data. To seed the development tenant on a manual `run-task`, add:
+The migrator uses the RDS master password only to install `erp_owner`, `erp_app`, and `erp_worker`, then applies migrations as `erp_owner`. The API connects as `erp_app` (DML only). The worker connects as `erp_worker` (DML plus `claim_outbox`). That run creates the bootstrap Mandant 100 "Northstar Demo GmbH" if it is missing, but loads no other demo data and leaves its seller details empty. To seed the development tenant on a manual `run-task`, add:
 
 ```powershell
 --overrides "{\"containerOverrides\":[{\"name\":\"Migrator\",\"command\":[\"--seed-demo\"]}]}"
 ```
 
 A database that still has trading tables but no `erp."__EFMigrationsHistory"` row for `InitialTradingSchema` must be destroyed and recreated. The migrator no longer patches that history.
+
+### Invoice data (R-16)
+
+The R-16 Phase A migrations add `TaxCode` to `articles`, and `Description`, `Position`, and `TaxCode` to `sales_order_lines`. Existing articles and lines become Standard19, and existing lines take the current article name and a position by physical row order.
+
+- **Deploy window.** The workflow deploys the new images before the migrator runs, so until the migrator exits the API returns 500 on article, order, and seller routes, and the worker fails to load released orders. Deploy with an empty outbox and release no orders until the migrator finishes. Replay any message dead-lettered in that window with `SELECT erp.replay_outbox('<id>');`.
+- **Code rollback.** Lines are unique on `(TenantId, SalesOrderId, Position)`, and code from before R-16 never sets `Position`, so its second line on any order fails. Before redeploying an older image, drop `erp."IX_sales_order_lines_TenantId_SalesOrderId_Position"` and recreate the non-unique `IX_sales_order_lines_TenantId_SalesOrderId`. Do not run the Down migrations: they drop the frozen line descriptions.
+- **Seller details.** Every Mandant needs street, postal code, city, country, and a Steuernummer or USt-IdNr. Enter them on the **Firma** tab (`/stamm/firma`) or with `PUT /api/v1/mandant/seller`. Phase B refuses to release orders for a Mandant with incomplete seller details, so complete them for every active Mandant before Phase B ships. Each change writes a `Mandant.SellerDetailsChanged` audit entry.
 
 The UI is baked into the API image and served from CloudFront (same origin as `/api/v1`). Open `https://<DistributionDomainName>/`. CloudFront redirects HTTP to HTTPS and uses the default `*.cloudfront.net` certificate. `/api/*` is not cached. The ALB stays HTTP and accepts port 80 only from the CloudFront origin-facing prefix list, so a direct request to the ALB from the internet is refused. Local Vite (`npm run dev --prefix src/erp-web`) remains optional for UI-only development and still proxies `/api` via `ERP_API_ORIGIN`.
 
@@ -76,10 +84,11 @@ The shell status bar shows a build stamp (`version · dd.MM.yyyy / HH:mm:ss Euro
 2. `GET /health` returns ok, and the UI bundle contains the order-entry shell plus the short git SHA from the image build.
 3. Creates a Cognito user and signs in. `GET /api/v1/session` must resolve that user to the bootstrap tenant.
 4. Anonymous `POST /api/v1/registrations/approve` with an unknown token returns 404. That proves the public route passes CloudFront without sending mail.
-5. `POST /api/v1/customers`, an address linked as Shipping, and `POST /api/v1/articles` (opening stock covers the release).
-6. `POST /api/v1/sales-orders` with `Idempotency-Key`.
-7. `POST /api/v1/sales-orders/{id}/release`.
-8. A delivery and invoice appear after the worker poll, with the delivery number reading `LS-n` and the invoice number reading `R-n`.
+5. `GET /api/v1/mandant/seller` for the bootstrap Mandant. If fields are missing, `PUT` fills only the empty ones with demo values (Hafenstraße 1, 20095 Hamburg, DE, Steuernummer 22/123/45678, USt-IdNr DE123456789). Values entered on the cell are kept, but the bootstrap Mandant then carries placeholder tax identifiers.
+6. `POST /api/v1/customers`, an address linked as Shipping, and `POST /api/v1/articles` (opening stock covers the release).
+7. `POST /api/v1/sales-orders` with `Idempotency-Key`.
+8. `POST /api/v1/sales-orders/{id}/release`.
+9. A delivery and invoice appear after the worker poll, with the delivery number reading `LS-n` and the invoice number reading `R-n`.
 
 ## Registration mail
 
