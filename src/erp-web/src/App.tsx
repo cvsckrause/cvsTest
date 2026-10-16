@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import './App.css'
+import { useShellAuth } from './shellAuth'
+import type { ShellAuth } from './shellAuth'
 import { getBuildInfo } from './buildInfo'
 import { useMasterData } from './master-data'
 import { useRoute } from './route'
@@ -13,8 +15,72 @@ import { StammWorkspace } from './workspaces/StammWorkspace'
 
 const buildInfo = getBuildInfo()
 
+function withoutDocument(route: AppRoute): AppRoute {
+  if (route.workspace === 'stamm') return { workspace: 'stamm', tab: route.tab, documentId: null }
+  if (route.workspace === 'lager') return { workspace: 'lager' }
+  return { workspace: 'sales', documentId: null }
+}
+
+function TenantStatus({
+  shell,
+  onSwitch,
+}: {
+  shell: ShellAuth | null
+  onSwitch: (tenantId: string) => void
+}) {
+  if (shell === null) return <span>Mandant 100 · Hauptlager MAIN</span>
+  if (shell.memberships.length <= 1) return <span>{shell.tenantId}</span>
+  return (
+    <select
+      className="tenant-select"
+      aria-label="Mandant wechseln"
+      value={shell.tenantId}
+      onChange={(event) => onSwitch(event.target.value)}
+    >
+      {shell.memberships.map((membership) => (
+        <option key={membership.tenantId} value={membership.tenantId}>
+          {membership.tenantId}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 function App() {
   const { route, navigate, lastStamm } = useRoute()
+  const shell = useShellAuth()
+
+  function switchMandant(tenantId: string) {
+    if (shell === null || tenantId === shell.tenantId) return
+    shell.switchTenant(tenantId)
+    navigate(withoutDocument(route), 'replace')
+  }
+
+  return (
+    <Workspace
+      key={shell?.tenantId ?? 'local'}
+      route={route}
+      navigate={navigate}
+      lastStamm={lastStamm}
+      shell={shell}
+      onSwitch={switchMandant}
+    />
+  )
+}
+
+function Workspace({
+  route,
+  navigate,
+  lastStamm,
+  shell,
+  onSwitch,
+}: {
+  route: AppRoute
+  navigate: (next: AppRoute, mode?: 'push' | 'replace') => void
+  lastStamm: Extract<AppRoute, { workspace: 'stamm' }>
+  shell: ShellAuth | null
+  onSwitch: (tenantId: string) => void
+}) {
   const [notice, setNotice] = useState('Stammdaten werden geladen …')
   const [busy, setBusy] = useState(false)
   const master = useMasterData(setNotice)
@@ -99,7 +165,7 @@ function App() {
         <footer className="statusbar" aria-live="polite">
           <span>{notice}</span>
           <span className="statusbar-meta">
-            <span>Mandant 100 · Hauptlager MAIN</span>
+            <TenantStatus shell={shell} onSwitch={onSwitch} />
             <span className="build-stamp" title="Build identity" aria-label={`Build ${buildInfo.label}`}>
               {buildInfo.label}
             </span>

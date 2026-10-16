@@ -1,28 +1,12 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { bootstrapAuth } from './auth/runtime'
 import type { AuthAdapter, AuthSession } from './auth/types'
 import { getBuildInfo } from './buildInfo'
+import { ShellAuthContext } from './shellAuth'
+import type { ShellAuth, ShellMembership } from './shellAuth'
 
 const buildInfo = getBuildInfo()
-
-export type ShellMembership = {
-  tenantId: string
-  isDefault: boolean
-}
-
-export type ShellAuth = {
-  mode: 'cognito'
-  memberships: ShellMembership[]
-  tenantId: string
-  switchTenant: (tenantId: string) => void
-}
-
-const ShellAuthContext = createContext<ShellAuth | null>(null)
-
-export function useShellAuth(): ShellAuth | null {
-  return useContext(ShellAuthContext)
-}
 
 type GateState =
   | { status: 'loading'; message: string }
