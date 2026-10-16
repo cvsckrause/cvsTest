@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { erpApi } from '../api'
+import { ApiError, erpApi } from '../api'
 import type { Address, Article, Customer, SellerDetails } from '../api'
 import { keepOrFirst } from '../format'
 import type { AppRoute, StammTab } from '../route'
@@ -55,7 +55,7 @@ export function useStammWorkspace({
   const [linkRole, setLinkRole] = useState('Shipping')
   const [seller, setSeller] = useState<SellerDetails | null>(null)
   const [sellerForm, setSellerForm] = useState(emptySeller)
-  const [sellerUnavailable, setSellerUnavailable] = useState(false)
+  const [sellerProblem, setSellerProblem] = useState<string | null>(null)
 
   const selectedLinkCustomerId = keepOrFirst(linkCustomerId, customers.map((customer) => customer.id))
   const selectedLinkAddressId = keepOrFirst(linkAddressId, addresses.map((address) => address.id))
@@ -113,12 +113,16 @@ export function useStammWorkspace({
     erpApi.sellerDetails()
       .then((loaded) => {
         if (cancelled) return
-        setSellerUnavailable(false)
+        setSellerProblem(null)
         applySeller(loaded)
       })
       .catch((error: Error) => {
         if (cancelled) return
-        setSellerUnavailable(true)
+        setSellerProblem(
+          error instanceof ApiError && error.status === 404
+            ? 'Für diesen Mandanten sind keine Firmendaten hinterlegt.'
+            : 'Firmendaten konnten nicht geladen werden. Tab erneut öffnen, um es noch einmal zu versuchen.',
+        )
         setNotice(error.message)
       })
     return () => {
@@ -289,7 +293,7 @@ export function useStammWorkspace({
     seller,
     sellerForm,
     setSellerForm,
-    sellerUnavailable,
+    sellerProblem,
     saveSeller,
     editArticle,
     editAddress,

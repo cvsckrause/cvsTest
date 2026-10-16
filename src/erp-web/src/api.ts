@@ -29,6 +29,15 @@ export type SellerDetailsUpdate = Json<Schemas['UpdateSellerDetailsRequest']>
 
 const baseUrl = import.meta.env.VITE_API_URL ?? '/api/v1'
 
+export class ApiError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
 function failureMessage(status: number, method?: string) {
   const verb = (method ?? 'GET').toUpperCase() === 'GET' ? 'Laden' : 'Speichern'
   return `${verb} fehlgeschlagen (${status})`
@@ -38,7 +47,7 @@ async function readJson<T>(response: Response, path: string, method?: string): P
   const contentType = response.headers.get('content-type') ?? ''
   const raw = await response.text()
   if (!raw) {
-    if (!response.ok) throw new Error(failureMessage(response.status, method))
+    if (!response.ok) throw new ApiError(failureMessage(response.status, method), response.status)
     return undefined as T
   }
 
@@ -73,7 +82,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const payload = await readJson<{ detail?: string; error?: string } & T>(response, path, init?.method)
   if (!response.ok) {
-    throw new Error(payload?.detail ?? payload?.error ?? failureMessage(response.status, init?.method))
+    throw new ApiError(payload?.detail ?? payload?.error ?? failureMessage(response.status, init?.method), response.status)
   }
 
   return payload as T
