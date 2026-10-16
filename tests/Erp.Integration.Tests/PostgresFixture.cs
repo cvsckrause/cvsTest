@@ -27,6 +27,7 @@ public sealed class PostgresFixture : IAsyncLifetime
     public Guid TenantB { get; } = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
     public TenantGraph SeedA { get; private set; }
     public TenantGraph SeedB { get; private set; }
+    public string AdminConnectionString { get; private set; } = string.Empty;
     public string AppConnectionString { get; private set; } = string.Empty;
     public string WorkerConnectionString { get; private set; } = string.Empty;
     internal DatabaseProbe Probe { get; private set; } = null!;
@@ -41,6 +42,7 @@ public sealed class PostgresFixture : IAsyncLifetime
         await _container.StartAsync();
 
         var adminConnectionString = _container.GetConnectionString();
+        AdminConnectionString = adminConnectionString;
         await MigrateAsync(adminConnectionString);
         await SeedMembershipsAsync(adminConnectionString);
         await CreateAppRoleAsync(adminConnectionString);
