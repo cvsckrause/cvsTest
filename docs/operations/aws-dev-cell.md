@@ -35,13 +35,13 @@ docker build -f src/Erp.Api/Dockerfile --build-arg VITE_APP_GIT_SHA=$(git rev-pa
 
 ## Deploy
 
-One-time, from a shell that already has admin credentials for account `098981324459` and a logged-in `gh`:
+Once, before the first deploy, from a shell that already has admin credentials for account `098981324459` and a logged-in `gh`:
 
 ```powershell
 ./infra/scripts/bootstrap-github-oidc.ps1
 ```
 
-That creates the GitHub OIDC provider, the role `erp-dev-github-deploy`, and the GitHub environment `aws-dev` with a required reviewer. The role trusts only `repo:cvsckrause/cvsTest:environment:aws-dev`. There are no static access keys. Approving that environment is the cost gate: both workflows wait there before they change the account. CDK itself is invoked with `--require-approval never` because the environment approval already happened.
+That creates the GitHub OIDC provider, the role `erp-dev-github-deploy`, and the GitHub environment `aws-dev` with a required reviewer. The role trusts only `repo:cvsckrause/cvsTest:environment:aws-dev`. There are no static access keys. Approving that environment is the cost gate: both workflows wait there before they change the account. CDK itself is invoked with `--require-approval never` because the environment approval already happened. Do not start either workflow until this script has been run.
 
 Then run **AWS dev cell deploy** (`workflow_dispatch` on `.github/workflows/aws-dev-deploy.yml`). One run on an empty cell:
 

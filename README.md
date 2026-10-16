@@ -61,4 +61,12 @@ GitHub Actions workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) r
 
 ## AWS
 
-See [`docs/operations/aws-dev-cell.md`](docs/operations/aws-dev-cell.md). Do not deploy until the cost gate in that document has been approved.
+See [`docs/operations/aws-dev-cell.md`](docs/operations/aws-dev-cell.md).
+
+Once, before the first deploy, from a shell that already has admin credentials for account `098981324459` and a logged-in `gh`:
+
+```powershell
+./infra/scripts/bootstrap-github-oidc.ps1
+```
+
+That creates the GitHub OIDC provider, the role `erp-dev-github-deploy`, and the GitHub environment `aws-dev` with a required reviewer. There are no static access keys. Approving `aws-dev` is the cost gate for **AWS dev cell deploy** and **AWS dev cell destroy**. Do not start either workflow until this script has been run.
