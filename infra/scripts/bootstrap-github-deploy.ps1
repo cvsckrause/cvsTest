@@ -41,7 +41,8 @@ if ($account -ne $DevCellAccount) {
 if (Test-DeployUser) {
   Write-Host "IAM user $UserName already exists."
 } else {
-  Invoke-Aws iam create-user --user-name $UserName --tags Key=Project,Value=cvs-erp Key=Purpose,Value=github-deploy | Out-Null
+  # Quoted: unquoted, PowerShell splits the shorthand at the comma into separate arguments.
+  Invoke-Aws iam create-user --user-name $UserName --tags "Key=Project,Value=cvs-erp" "Key=Purpose,Value=github-deploy" | Out-Null
   Write-Host "Created IAM user $UserName."
 }
 
