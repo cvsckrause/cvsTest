@@ -12,6 +12,7 @@ namespace Erp.Integration.Tests;
 public sealed class InvoicePrefixUpgradeTests(PostgresFixture fixture)
 {
     private const string NumberRangesMigration = "20261016063016_AddNumberRanges";
+    private const string PrefixMigration = "20261016091520_PrefixInvoiceNumbers";
     private const string OwnerRole = "erp_migration_owner";
 
     private static readonly Guid TenantX = Guid.Parse("0000000a-0000-0000-0000-000000000022");
@@ -25,7 +26,7 @@ public sealed class InvoicePrefixUpgradeTests(PostgresFixture fixture)
         await using var scratch = await ScratchDatabase.CreateAsync(fixture.AdminConnectionString);
         await PrepareNumberRangesSchemaAsync(scratch);
 
-        await MigrateAsOwnerAsync(scratch, target: null);
+        await MigrateAsOwnerAsync(scratch, PrefixMigration);
 
         Assert.Equal(("R-", 4L), await RangeAsync(scratch, TenantX, "Invoice", 0));
         Assert.Equal(("R-", 2L), await RangeAsync(scratch, TenantY, "Invoice", 0));
@@ -45,7 +46,7 @@ public sealed class InvoicePrefixUpgradeTests(PostgresFixture fixture)
     {
         await using var scratch = await ScratchDatabase.CreateAsync(fixture.AdminConnectionString);
         await PrepareNumberRangesSchemaAsync(scratch);
-        await MigrateAsOwnerAsync(scratch, target: null);
+        await MigrateAsOwnerAsync(scratch, PrefixMigration);
 
         await MigrateAsOwnerAsync(scratch, NumberRangesMigration);
 
@@ -102,7 +103,7 @@ public sealed class InvoicePrefixUpgradeTests(PostgresFixture fixture)
         await command.ExecuteNonQueryAsync();
     }
 
-    private static async Task MigrateAsOwnerAsync(ScratchDatabase scratch, string? target)
+    private static async Task MigrateAsOwnerAsync(ScratchDatabase scratch, string target)
     {
         var tenant = new TenantContext(MigratorTenant, "erp-migrator");
         var options = new DbContextOptionsBuilder<ErpDbContext>()
