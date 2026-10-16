@@ -137,14 +137,16 @@ static async Task EnsureApplicationRolesAsync(
         $roles$;
         """);
 
+    // RDS master is not a superuser, so it cannot mention SUPERUSER or BYPASSRLS here.
+    // CREATE ROLE above already sets those attributes.
     await ExecuteAsync(connection, $"""
-        ALTER ROLE erp_owner WITH LOGIN PASSWORD {QuoteLiteral(ownerPassword)} NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+        ALTER ROLE erp_owner WITH LOGIN PASSWORD {QuoteLiteral(ownerPassword)};
         """);
     await ExecuteAsync(connection, $"""
-        ALTER ROLE erp_app WITH LOGIN PASSWORD {QuoteLiteral(appPassword)} NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+        ALTER ROLE erp_app WITH LOGIN PASSWORD {QuoteLiteral(appPassword)};
         """);
     await ExecuteAsync(connection, $"""
-        ALTER ROLE erp_worker WITH LOGIN PASSWORD {QuoteLiteral(workerPassword)} NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+        ALTER ROLE erp_worker WITH LOGIN PASSWORD {QuoteLiteral(workerPassword)};
         """);
 
     await ExecuteAsync(connection, """
