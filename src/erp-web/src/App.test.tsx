@@ -441,7 +441,7 @@ async function bootCognito(
     setTenantId: (next) => {
       tenantId = next
     },
-    login: async () => undefined,
+    login: async () => authSession,
     logout: async () => undefined,
     needsLogin: () => false,
   }
@@ -450,7 +450,6 @@ async function bootCognito(
       mode: 'cognito',
       authority: 'https://auth.example.test',
       clientId: 'client',
-      hostedUiOrigin: 'https://auth.example.test',
     }),
     () => adapter,
   )

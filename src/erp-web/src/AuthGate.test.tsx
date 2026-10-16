@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { AuthGate } from './AuthGate'
 import { resetAuthRuntime } from './auth/runtime'
@@ -33,27 +33,80 @@ function adapterFor(session: AuthSession, setTenantId: (tenantId: string | null)
     getAccessToken: async () => session.accessToken,
     getTenantId: () => session.tenantId,
     setTenantId,
-    login: async () => undefined,
+    login: async () => session,
     logout: async () => undefined,
     needsLogin: (current) => session.mode === 'cognito' && !current.authenticated,
   }
 }
 
-test('blocks the app behind Anmelden when Cognito session is unauthenticated', async () => {
-  const session: AuthSession = {
-    mode: 'cognito',
-    authenticated: false,
-    accessToken: null,
-    tenantId: null,
-  }
+const signedOut: AuthSession = {
+  mode: 'cognito',
+  authenticated: false,
+  accessToken: null,
+  tenantId: null,
+}
 
+test('blocks the app behind an empty three-field login form', async () => {
   render(
-    <AuthGate bootstrap={async () => ({ adapter: adapterFor(session), session })}>
+    <AuthGate bootstrap={async () => ({ adapter: adapterFor(signedOut), session: signedOut })}>
       <div>secret-app</div>
     </AuthGate>,
   )
 
   expect(await screen.findByRole('button', { name: 'Anmelden' })).toBeInTheDocument()
+  expect(screen.getByLabelText('Mandantennummer')).toHaveValue('')
+  expect(screen.getByLabelText('User')).toHaveValue('')
+  expect(screen.getByLabelText('Passwort')).toHaveValue('')
+  expect(screen.getByRole('link', { name: 'Neuen Mandanten erstellen' })).toHaveAttribute('href', '/registrieren')
+  expect(screen.queryByText('secret-app')).not.toBeInTheDocument()
+})
+
+test('submits all three fields and opens the shell for the signed-in Mandant', async () => {
+  const signedIn: AuthSession = { ...signedOut, authenticated: true, accessToken: 'access-token' }
+  const login = vi.fn<AuthAdapter['login']>(async () => signedIn)
+  const adapter: AuthAdapter = { ...adapterFor(signedOut), login, needsLogin: (current) => !current.authenticated }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => jsonResponse({ memberships: [{ tenantId: defaultTenantId, isDefault: true }], defaultTenantId })),
+  )
+
+  render(
+    <AuthGate bootstrap={async () => ({ adapter, session: signedOut })}>
+      <div>secret-app</div>
+    </AuthGate>,
+  )
+
+  fireEvent.change(await screen.findByLabelText('Mandantennummer'), { target: { value: '1001' } })
+  fireEvent.change(screen.getByLabelText('User'), { target: { value: 'kunde' } })
+  fireEvent.change(screen.getByLabelText('Passwort'), { target: { value: 'Secret-123!' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Anmelden' }))
+
+  expect(await screen.findByText('secret-app')).toBeInTheDocument()
+  expect(login).toHaveBeenCalledWith({ mandantennummer: '1001', user: 'kunde', password: 'Secret-123!' })
+})
+
+test('a failed login shows the error and clears only the password', async () => {
+  const adapter: AuthAdapter = {
+    ...adapterFor(signedOut),
+    login: async () => {
+      throw new Error('Anmeldung fehlgeschlagen.')
+    },
+  }
+
+  render(
+    <AuthGate bootstrap={async () => ({ adapter, session: signedOut })}>
+      <div>secret-app</div>
+    </AuthGate>,
+  )
+
+  fireEvent.change(await screen.findByLabelText('Mandantennummer'), { target: { value: '1001' } })
+  fireEvent.change(screen.getByLabelText('User'), { target: { value: 'kunde' } })
+  fireEvent.change(screen.getByLabelText('Passwort'), { target: { value: 'wrong' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Anmelden' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Anmeldung fehlgeschlagen.')
+  expect(screen.getByLabelText('Mandantennummer')).toHaveValue('1001')
+  expect(screen.getByLabelText('Passwort')).toHaveValue('')
   expect(screen.queryByText('secret-app')).not.toBeInTheDocument()
 })
 

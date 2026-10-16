@@ -119,24 +119,14 @@ export class ErpDevStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     })
 
-    const localUrls = ['http://localhost:5173/', 'http://127.0.0.1:5173/']
-    const userPoolDomain = userPool.addDomain('HostedUi', {
-      cognitoDomain: {
-        // Must be concrete at synth (no unresolved tokens). Keep it unique to this project.
-        domainPrefix: `erp-cvstest-${environmentName}`.slice(0, 63).toLowerCase(),
-      },
-    })
     const userPoolClient = userPool.addClient('SpaClient', {
       generateSecret: false,
       // The browser login form sends Mandantennummer.user and password with USER_PASSWORD_AUTH
       // over TLS. Admin password auth is for the scripted smoke test.
       authFlows: { userSrp: true, userPassword: true, adminUserPassword: true },
-      oAuth: {
-        flows: { authorizationCodeGrant: true },
-        scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
-        callbackUrls: localUrls,
-        logoutUrls: localUrls,
-      },
+      // No Hosted UI: tokens come only from InitiateAuth, so the client has no OAuth redirect flow.
+      disableOAuth: true,
+      enableTokenRevocation: true,
       preventUserExistenceErrors: true,
     })
 
@@ -219,8 +209,6 @@ export class ErpDevStack extends cdk.Stack {
         Database__Username: 'erp_app',
         Authentication__Authority: `https://cognito-idp.${this.region}.amazonaws.com/${userPool.userPoolId}`,
         Authentication__ClientId: userPoolClient.userPoolClientId,
-        // domainName is the Cognito prefix only; Hosted UI host is prefix.auth.<region>.amazoncognito.com
-        Authentication__HostedUiDomain: `${userPoolDomain.domainName}.auth.${this.region}.amazoncognito.com`,
         // Self sign-up is off. A Cognito user with no row yet joins the synthetic tenant.
         Authentication__BootstrapTenantId: '11111111-1111-1111-1111-111111111111',
         Registration__AwsRegion: this.region,
@@ -415,10 +403,6 @@ export class ErpDevStack extends cdk.Stack {
       },
     })
     const publicBaseUrl = `https://${distribution.distributionDomainName}`
-    const hostedUrls = [...localUrls, `${publicBaseUrl}/`]
-    const spaClient = userPoolClient.node.defaultChild as cognito.CfnUserPoolClient
-    spaClient.callbackUrLs = hostedUrls
-    spaClient.logoutUrLs = hostedUrls
     apiContainer.addEnvironment('Registration__PublicBaseUrl', publicBaseUrl)
 
     listener.addTargets('ApiTargets', {
@@ -440,9 +424,6 @@ export class ErpDevStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'AlbDnsName', { value: alb.loadBalancerDnsName })
     new cdk.CfnOutput(this, 'UserPoolId', { value: userPool.userPoolId })
     new cdk.CfnOutput(this, 'UserPoolClientId', { value: userPoolClient.userPoolClientId })
-    new cdk.CfnOutput(this, 'CognitoDomain', {
-      value: `${userPoolDomain.domainName}.auth.${this.region}.amazoncognito.com`,
-    })
     new cdk.CfnOutput(this, 'CognitoAuthority', {
       value: `https://cognito-idp.${this.region}.amazonaws.com/${userPool.userPoolId}`,
     })

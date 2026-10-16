@@ -24,7 +24,9 @@ export function createLocalAdapter(): AuthAdapter {
     setTenantId(next) {
       tenantId = next
     },
-    async login() {},
+    async login() {
+      return { ...localSession, tenantId }
+    },
     async logout() {
       tenantId = null
     },

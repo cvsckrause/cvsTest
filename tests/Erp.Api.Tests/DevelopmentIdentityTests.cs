@@ -210,10 +210,11 @@ public sealed class DevelopmentIdentityTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("cognito", payload?.Mode);
         Assert.Equal("test-client", payload?.ClientId);
-        Assert.Equal("https://erp-test.auth.eu-north-1.amazoncognito.com", payload?.HostedUiOrigin);
+        Assert.Equal("https://example.invalid/", payload?.Authority);
+        Assert.Null(payload?.HostedUiOrigin);
     }
 
-    private sealed record AuthConfigPayload(string Mode, string? ClientId, string? HostedUiOrigin);
+    private sealed record AuthConfigPayload(string Mode, string? Authority, string? ClientId, string? HostedUiOrigin);
 
     [Fact]
     public async Task Disabled_authentication_outside_development_uses_an_explicit_development_identity()
@@ -390,9 +391,6 @@ internal sealed class ApiFixture : IAsyncDisposable
             "Authentication__Authority",
             authenticationEnabled ? "https://example.invalid/" : "");
         Environment.SetEnvironmentVariable("Authentication__ClientId", authenticationEnabled ? "test-client" : "");
-        Environment.SetEnvironmentVariable(
-            "Authentication__HostedUiDomain",
-            authenticationEnabled ? "erp-test.auth.eu-north-1.amazoncognito.com" : "");
         Environment.SetEnvironmentVariable("Authentication__Audience", "erp-api");
         Environment.SetEnvironmentVariable(
             "DevelopmentIdentity__Enabled",
