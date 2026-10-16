@@ -3,6 +3,7 @@
     <Project Path="src/Erp.Api/Erp.Api.csproj" />
     <Project Path="src/Erp.BuildingBlocks/Erp.BuildingBlocks.csproj" />
     <Project Path="src/Erp.Migrator/Erp.Migrator.csproj" />
+    <Project Path="src/Erp.Observability/Erp.Observability.csproj" />
     <Project Path="src/Erp.Persistence/Erp.Persistence.csproj" />
     <Project Path="src/Erp.Worker/Erp.Worker.csproj" />
   </Folder>

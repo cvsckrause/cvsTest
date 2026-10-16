@@ -1,10 +1,12 @@
 using Erp.BuildingBlocks;
+using Erp.Observability;
 using Erp.Persistence;
 using Erp.Worker;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
 var builder = Host.CreateApplicationBuilder(args);
+builder.Logging.AddErpJsonLogging();
 var connectionString = builder.Configuration.GetConnectionString("Erp");
 if (string.IsNullOrWhiteSpace(connectionString))
 {
@@ -41,6 +43,7 @@ builder.Services.AddDbContextFactory<ErpDbContext>((services, options) => option
     .UseNpgsql(connectionString)
     .AddInterceptors(new TenantConnectionInterceptor(services.GetRequiredService<ITenantContext>())));
 builder.Services.AddHostedService<Worker>();
+builder.Services.AddErpTelemetry("erp-worker", builder.Configuration);
 
 var host = builder.Build();
 host.Run();

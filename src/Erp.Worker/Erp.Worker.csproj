@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Erp.BuildingBlocks\Erp.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\Erp.Observability\Erp.Observability.csproj" />
     <ProjectReference Include="..\Modules\Erp.Platform\Erp.Platform.csproj" />
     <ProjectReference Include="..\Modules\Erp.Billing\Erp.Billing.csproj" />
     <ProjectReference Include="..\Erp.Persistence\Erp.Persistence.csproj" />

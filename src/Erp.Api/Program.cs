@@ -1,12 +1,16 @@
 using System.Security.Claims;
 using Erp.Api;
 using Erp.BuildingBlocks;
+using Erp.Observability;
 using Erp.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Logging.AddErpJsonLogging();
 var connectionString = BuildConnectionString(builder.Configuration);
 var cognitoAuthority = builder.Configuration["Authentication:Authority"];
 var cognitoClientId = builder.Configuration["Authentication:ClientId"];
@@ -42,6 +46,29 @@ builder.Services.AddScoped<ITenantContext>(services => services.GetRequiredServi
 builder.Services.AddDbContext<ErpDbContext>((services, options) => options
     .UseNpgsql(connectionString)
     .AddInterceptors(new TenantConnectionInterceptor(services.GetRequiredService<ITenantContext>())));
+builder.Services.AddErpTelemetry(
+    "erp-api",
+    builder.Configuration,
+    tracing => tracing
+        .AddAspNetCoreInstrumentation(options =>
+        {
+            options.EnrichWithHttpRequest = (activity, request) =>
+                activity.SetTag("correlation.id", request.HttpContext.TraceIdentifier);
+            options.EnrichWithHttpResponse = (activity, response) =>
+            {
+                if (response.HttpContext.Items[RequestLog.TenantId] is string tenantId && tenantId.Length > 0)
+                {
+                    activity.SetTag("tenant.id", tenantId);
+                }
+
+                if (response.HttpContext.Items[RequestLog.UserId] is string userId && userId.Length > 0)
+                {
+                    activity.SetTag("enduser.id", userId);
+                }
+            };
+        })
+        .AddHttpClientInstrumentation(),
+    metrics => metrics.AddAspNetCoreInstrumentation().AddHttpClientInstrumentation());
 
 if (authenticationEnabled)
 {
@@ -61,11 +88,31 @@ if (developmentIdentity.Enabled && !app.Environment.IsDevelopment())
 
 app.Use(async (context, next) =>
 {
-    var correlationId = context.Request.Headers["X-Correlation-ID"].FirstOrDefault()
-        ?? Guid.NewGuid().ToString("N");
+    var correlationId = context.Request.Headers["X-Correlation-ID"].FirstOrDefault();
+    if (string.IsNullOrWhiteSpace(correlationId))
+    {
+        correlationId = Guid.NewGuid().ToString("N");
+    }
+    else if (correlationId.Length > 100)
+    {
+        correlationId = correlationId[..100];
+    }
+
     context.TraceIdentifier = correlationId;
     context.Response.Headers["X-Correlation-ID"] = correlationId;
-    await next();
+    var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Erp.Request");
+    using (logger.BeginScope(new RequestLogScope(context)))
+    {
+        await next();
+        if (context.Request.Path.StartsWithSegments("/api"))
+        {
+            logger.LogInformation(
+                "Handled {Method} {Path} with status {StatusCode}.",
+                context.Request.Method,
+                context.Request.Path.Value,
+                context.Response.StatusCode);
+        }
+    }
 });
 app.UseCors();
 app.UseDefaultFiles();
@@ -94,6 +141,8 @@ app.Use(async (context, next) =>
 
         context.RequestServices.GetRequiredService<RequestTenantContext>()
             .Set(identity.Value.TenantId, identity.Value.UserId);
+        context.Items[RequestLog.TenantId] = identity.Value.TenantId.ToString();
+        context.Items[RequestLog.UserId] = identity.Value.UserId;
         await next();
         return;
     }
@@ -132,6 +181,8 @@ app.Use(async (context, next) =>
     }
 
     context.RequestServices.GetRequiredService<RequestTenantContext>().Set(tenantId, userId);
+    context.Items[RequestLog.TenantId] = tenantId.ToString();
+    context.Items[RequestLog.UserId] = userId;
     await next();
 });
 

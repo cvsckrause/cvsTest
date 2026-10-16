@@ -22,12 +22,12 @@ internal sealed class ApiSession : IDisposable
     public Task<ApiResult> GetAsync(string path) =>
         SendAsync(HttpMethod.Get, path);
 
-    public Task<ApiResult> PostAsync(string path, object body, string? idempotencyKey = null) =>
-        SendAsync(HttpMethod.Post, path, body, idempotencyKey);
+    public Task<ApiResult> PostAsync(string path, object body, string? idempotencyKey = null, string? correlationId = null) =>
+        SendAsync(HttpMethod.Post, path, body, idempotencyKey, correlationId);
 
-    public async Task<ApiResult> PostOkAsync(string path, object body, string? idempotencyKey = null)
+    public async Task<ApiResult> PostOkAsync(string path, object body, string? idempotencyKey = null, string? correlationId = null)
     {
-        var result = await PostAsync(path, body, idempotencyKey);
+        var result = await PostAsync(path, body, idempotencyKey, correlationId);
         if ((int)result.Status is < 200 or >= 300)
         {
             throw new InvalidOperationException($"{path} returned {(int)result.Status}: {result.Body}");
@@ -38,7 +38,12 @@ internal sealed class ApiSession : IDisposable
 
     public void Dispose() => _client.Dispose();
 
-    private async Task<ApiResult> SendAsync(HttpMethod method, string path, object? body = null, string? idempotencyKey = null)
+    private async Task<ApiResult> SendAsync(
+        HttpMethod method,
+        string path,
+        object? body = null,
+        string? idempotencyKey = null,
+        string? correlationId = null)
     {
         using var request = new HttpRequestMessage(method, path);
         if (body is not null)
@@ -49,6 +54,11 @@ internal sealed class ApiSession : IDisposable
         if (idempotencyKey is not null)
         {
             request.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey);
+        }
+
+        if (correlationId is not null)
+        {
+            request.Headers.TryAddWithoutValidation("X-Correlation-ID", correlationId);
         }
 
         using var response = await _client.SendAsync(request);

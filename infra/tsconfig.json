@@ -23,5 +23,5 @@
     "types": ["node"],
     "ignoreDeprecations": "6.0"
   },
-  "include": ["bin/**/*.ts", "lib/**/*.ts"]
+  "include": ["bin/**/*.ts", "lib/**/*.ts", "test/**/*.ts"]
 }

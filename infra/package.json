@@ -8,6 +8,7 @@
   "scripts": {
     "build": "tsc --noEmit",
     "synth": "cdk synth",
+    "test": "ts-node --prefer-ts-exts test/erp-dev-stack.test.ts",
     "diff": "cdk diff",
     "deploy": "cdk deploy",
     "destroy": "cdk destroy"

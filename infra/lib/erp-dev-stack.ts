@@ -1,5 +1,6 @@
 import * as cdk from 'aws-cdk-lib'
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront'
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch'
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins'
 import * as cognito from 'aws-cdk-lib/aws-cognito'
 import * as ec2 from 'aws-cdk-lib/aws-ec2'
@@ -413,6 +414,37 @@ export class ErpDevStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'DocumentsBucketName', { value: documents.bucketName })
     new cdk.CfnOutput(this, 'WorkerQueueUrl', { value: workerQueue.queueUrl })
     new cdk.CfnOutput(this, 'WorkerDlqUrl', { value: deadLetterQueue.queueUrl })
+
+    // Names match Erp.Observability.OutboxMetricsDocument. The worker prints one EMF
+    // line per batch, and CloudWatch turns that line into these metrics.
+    const outboxMetric = (metricName: string) =>
+      new cloudwatch.Metric({
+        namespace: 'Erp/Outbox',
+        metricName,
+        dimensionsMap: { Service: 'worker' },
+        statistic: 'Maximum',
+        period: cdk.Duration.minutes(1),
+      })
+
+    new cloudwatch.Alarm(this, 'OutboxDeadLetterAlarm', {
+      alarmName: `erp-${environmentName}-outbox-dead-letter`,
+      alarmDescription: 'An outbox message was dead-lettered.',
+      metric: outboxMetric('DeadLetterCount'),
+      threshold: 0,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    })
+
+    new cloudwatch.Alarm(this, 'OutboxOldestPendingAlarm', {
+      alarmName: `erp-${environmentName}-outbox-oldest-pending`,
+      alarmDescription: 'An outbox message has been pending for more than 15 minutes.',
+      metric: outboxMetric('OldestPendingAgeSeconds'),
+      threshold: 900,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    })
     new cdk.CfnOutput(this, 'ClusterName', { value: cluster.clusterName })
     new cdk.CfnOutput(this, 'PublicSubnetIds', {
       value: vpc.publicSubnets.map((subnet) => subnet.subnetId).join(','),

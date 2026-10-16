@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Erp.Api\Erp.Api.csproj" />
+    <ProjectReference Include="..\..\src\Erp.Observability\Erp.Observability.csproj" />
     <ProjectReference Include="..\..\src\Modules\Erp.Platform\Erp.Platform.csproj" />
   </ItemGroup>
 
