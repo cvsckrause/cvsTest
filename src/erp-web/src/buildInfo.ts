@@ -1,3 +1,5 @@
+import { formatWhen } from './format'
+
 export type BuildInfo = {
   version: string
   buildTime: string
@@ -26,10 +28,7 @@ export function formatBuildStamp(version: string, buildTime: string, gitSha: str
 
 function formatBuildTime(raw: string): string {
   if (!raw || raw === 'local') return 'local'
-  const parsed = Date.parse(raw)
-  if (Number.isNaN(parsed)) return raw
-  const iso = new Date(parsed).toISOString()
-  return `${iso.slice(0, 16).replace('T', ' ')} UTC`
+  return formatWhen(raw)
 }
 
 function trimOr(value: string | undefined, fallback: string): string {
