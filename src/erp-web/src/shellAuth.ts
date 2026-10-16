@@ -6,7 +6,6 @@ export type ShellMembership = {
 }
 
 export type ShellAuth = {
-  mode: 'cognito'
   memberships: ShellMembership[]
   tenantId: string
   switchTenant: (tenantId: string) => void

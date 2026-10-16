@@ -2,18 +2,30 @@ using System.Security.Claims;
 
 namespace Erp.Api;
 
+internal static class AccessTokenSubject
+{
+    public static string? Read(ClaimsPrincipal user)
+    {
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub");
+        return string.IsNullOrWhiteSpace(userId) ? null : userId;
+    }
+}
+
 internal static class MembershipEndpoints
 {
+    public const string ApiPrefix = "/api/v1";
+    public const string RelativePath = "/me/memberships";
+    public const string Path = ApiPrefix + RelativePath;
+
     public static RouteGroupBuilder MapMembershipEndpoints(this RouteGroupBuilder api)
     {
-        api.MapGet("/me/memberships", async (
+        api.MapGet(RelativePath, async (
             HttpContext context,
             ITenantMemberships memberships,
             CancellationToken cancellationToken) =>
         {
-            var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier)
-                ?? context.User.FindFirstValue("sub");
-            if (string.IsNullOrWhiteSpace(userId))
+            var userId = AccessTokenSubject.Read(context.User);
+            if (userId is null)
             {
                 return Results.Problem(
                     title: "The request is not allowed.",

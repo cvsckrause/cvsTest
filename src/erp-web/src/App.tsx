@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import './App.css'
 import { useShellAuth } from './shellAuth'
-import type { ShellAuth } from './shellAuth'
 import { getBuildInfo } from './buildInfo'
 import { useMasterData } from './master-data'
 import { useRoute } from './route'
@@ -22,12 +21,20 @@ function withoutDocument(route: AppRoute): AppRoute {
 }
 
 function TenantStatus({
-  shell,
-  onSwitch,
+  route,
+  navigate,
 }: {
-  shell: ShellAuth | null
-  onSwitch: (tenantId: string) => void
+  route: AppRoute
+  navigate: (next: AppRoute, mode?: 'push' | 'replace') => void
 }) {
+  const shell = useShellAuth()
+
+  function switchTenant(tenantId: string) {
+    if (shell === null || tenantId === shell.tenantId) return
+    shell.switchTenant(tenantId)
+    navigate(withoutDocument(route), 'replace')
+  }
+
   if (shell === null) return <span>Mandant 100 · Hauptlager MAIN</span>
   if (shell.memberships.length <= 1) return <span>{shell.tenantId}</span>
   return (
@@ -35,7 +42,7 @@ function TenantStatus({
       className="tenant-select"
       aria-label="Mandant wechseln"
       value={shell.tenantId}
-      onChange={(event) => onSwitch(event.target.value)}
+      onChange={(event) => switchTenant(event.target.value)}
     >
       {shell.memberships.map((membership) => (
         <option key={membership.tenantId} value={membership.tenantId}>
@@ -50,20 +57,12 @@ function App() {
   const { route, navigate, lastStamm } = useRoute()
   const shell = useShellAuth()
 
-  function switchMandant(tenantId: string) {
-    if (shell === null || tenantId === shell.tenantId) return
-    shell.switchTenant(tenantId)
-    navigate(withoutDocument(route), 'replace')
-  }
-
   return (
     <Workspace
       key={shell?.tenantId ?? 'local'}
       route={route}
       navigate={navigate}
       lastStamm={lastStamm}
-      shell={shell}
-      onSwitch={switchMandant}
     />
   )
 }
@@ -72,14 +71,10 @@ function Workspace({
   route,
   navigate,
   lastStamm,
-  shell,
-  onSwitch,
 }: {
   route: AppRoute
   navigate: (next: AppRoute, mode?: 'push' | 'replace') => void
   lastStamm: Extract<AppRoute, { workspace: 'stamm' }>
-  shell: ShellAuth | null
-  onSwitch: (tenantId: string) => void
 }) {
   const [notice, setNotice] = useState('Stammdaten werden geladen …')
   const [busy, setBusy] = useState(false)
@@ -165,7 +160,7 @@ function Workspace({
         <footer className="statusbar" aria-live="polite">
           <span>{notice}</span>
           <span className="statusbar-meta">
-            <TenantStatus shell={shell} onSwitch={onSwitch} />
+            <TenantStatus route={route} navigate={navigate} />
             <span className="build-stamp" title="Build identity" aria-label={`Build ${buildInfo.label}`}>
               {buildInfo.label}
             </span>

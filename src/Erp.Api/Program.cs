@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Erp.Api;
 using Erp.BuildingBlocks;
 using Erp.Observability;
@@ -153,8 +152,8 @@ app.Use(async (context, next) =>
         return;
     }
 
-    var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? context.User.FindFirstValue("sub");
-    if (string.IsNullOrWhiteSpace(userId))
+    var userId = AccessTokenSubject.Read(context.User);
+    if (userId is null)
     {
         await WriteForbidden(context, "The access token has no subject.");
         return;
@@ -169,7 +168,7 @@ app.Use(async (context, next) =>
     }
 
     if (HttpMethods.IsGet(context.Request.Method)
-        && context.Request.Path.Equals("/api/v1/me/memberships", StringComparison.OrdinalIgnoreCase))
+        && context.Request.Path.Equals(MembershipEndpoints.Path, StringComparison.OrdinalIgnoreCase))
     {
         context.Items[RequestLog.UserId] = userId;
         await next();
@@ -219,7 +218,7 @@ app.MapGet("/auth-config.json", () =>
     });
 });
 
-var api = app.MapGroup("/api/v1");
+var api = app.MapGroup(MembershipEndpoints.ApiPrefix);
 if (authenticationEnabled)
 {
     api.RequireAuthorization();

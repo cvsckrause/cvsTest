@@ -88,6 +88,23 @@ public sealed class MembershipEndpointTests
     }
 
     [Fact]
+    public async Task Bootstrap_grant_is_visible_on_the_membership_list()
+    {
+        await using var fixture = ApiFixture.Start(
+            environment: "Production",
+            authenticationEnabled: true,
+            developmentIdentityEnabled: false,
+            user: User("user-1"),
+            bootstrapTenantId: TenantB);
+
+        var body = await Read(fixture);
+
+        Assert.Equal(Guid.Empty, fixture.Observed.TenantId);
+        Assert.Equal(TenantB, body.DefaultTenantId);
+        Assert.Contains(body.Memberships, row => row.TenantId == TenantB && row.IsDefault);
+    }
+
+    [Fact]
     public async Task Each_user_sees_only_their_own_memberships()
     {
         var shared = new[]

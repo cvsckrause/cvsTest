@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { bootstrapAuth } from './auth/runtime'
 import type { AuthAdapter, AuthSession } from './auth/types'
 import { getBuildInfo } from './buildInfo'
+import type { components } from './api.generated'
 import { ShellAuthContext } from './shellAuth'
 import type { ShellAuth, ShellMembership } from './shellAuth'
 
@@ -16,10 +17,7 @@ type GateState =
 
 type Bootstrap = () => Promise<{ adapter: AuthAdapter; session: AuthSession }>
 
-type MembershipPayload = {
-  memberships?: ShellMembership[]
-  defaultTenantId?: string | null
-}
+type MembershipPayload = components['schemas']['MembershipListResponse']
 
 function asErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
@@ -69,7 +67,6 @@ export function AuthGate({
 
     function shellFor(adapter: AuthAdapter, memberships: ShellMembership[], tenantId: string): ShellAuth {
       return {
-        mode: 'cognito',
         memberships,
         tenantId,
         switchTenant(nextTenantId) {
