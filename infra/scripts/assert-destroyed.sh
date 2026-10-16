@@ -20,9 +20,6 @@ if ! aws sesv2 get-email-identity --region "${AWS_REGION}" --email-identity "${R
   echo "SES identity ${REGISTRATION_MAILBOX:-ckrause@cvs.de} is missing. The next deploy recreates it and needs another verification click." >&2
 fi
 
-aws iam get-role --role-name "${DEPLOY_ROLE_NAME}" >/dev/null
-aws iam get-open-id-connect-provider \
-  --open-id-connect-provider-arn "arn:aws:iam::${AWS_ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com" \
-  >/dev/null
+aws iam get-user --user-name "${DEPLOY_USER_NAME}" >/dev/null
 
-echo "Destroy left CDKToolkit, the three ECR repositories, the GitHub OIDC provider, and ${DEPLOY_ROLE_NAME}."
+echo "Destroy left CDKToolkit, the three ECR repositories, and the deploy user ${DEPLOY_USER_NAME}."

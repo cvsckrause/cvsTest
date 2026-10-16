@@ -35,13 +35,19 @@ docker build -f src/Erp.Api/Dockerfile --build-arg VITE_APP_GIT_SHA=$(git rev-pa
 
 ## Deploy
 
-Once, before the first deploy, from a shell that already has admin credentials for account `098981324459` and a logged-in `gh`:
+Once, before the first deploy, from PowerShell in the repository root, with AWS credentials for account `098981324459` (the `awscli-cvstest` user is enough) and a logged-in `gh`:
 
 ```powershell
-./infra/scripts/bootstrap-github-oidc.ps1
+.\infra\scripts\bootstrap-github-deploy.ps1
 ```
 
-That creates the GitHub OIDC provider, the role `erp-dev-github-deploy`, and the GitHub environment `aws-dev` with a required reviewer. The role trusts only `repo:cvsckrause/cvsTest:environment:aws-dev`. There are no static access keys. Approving that environment is the cost gate: both workflows wait there before they change the account. CDK itself is invoked with `--require-approval never` because the environment approval already happened. Do not start either workflow until this script has been run.
+From `cmd.exe`, use `powershell -ExecutionPolicy Bypass -File .\infra\scripts\bootstrap-github-deploy.ps1`.
+
+The script creates the IAM user `erp-dev-github-deploy` with `AdministratorAccess` (CDK changes IAM roles), creates an access key, and stores it as the secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` of the GitHub environment `aws-dev`. It also sets you as the required reviewer of that environment. The organization's service control policy denies GitHub OIDC providers in this account, so the workflows cannot federate and use this key instead.
+
+The key is long-lived. Only jobs of the `aws-dev` environment can read it, and those wait for your approval. Run the script again to rotate the key: it stores a new key and then deletes the old one.
+
+Approving that environment is the cost gate: both workflows wait there before they change the account. CDK itself is invoked with `--require-approval never` because the environment approval already happened. Do not start either workflow until this script has been run.
 
 Then run **AWS dev cell deploy** (`workflow_dispatch` on `.github/workflows/aws-dev-deploy.yml`). One run on an empty cell:
 
@@ -95,7 +101,7 @@ The workflow fails if any of these is missing:
 
 - `CDKToolkit` (the CDK bootstrap stack; leave it unless you are tearing the account down)
 - ECR repositories `erp-dev-api`, `erp-dev-worker`, and `erp-dev-migrator`
-- The GitHub OIDC provider and `erp-dev-github-deploy`
+- The deploy user `erp-dev-github-deploy`
 
 It also warns, without failing, when the SES identity `ckrause@cvs.de` is gone.
 
