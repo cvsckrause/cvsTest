@@ -16,7 +16,3 @@ export function formatWhen(value: string) {
 export function keepOrFirst(current: string, ids: readonly string[]) {
   return ids.includes(current) ? current : (ids[0] ?? '')
 }
-
-export function nextOrderNumber(current: string) {
-  return current.replace(/(\d+)$/, (digits) => String(Number(digits) + 1).padStart(digits.length, '0'))
-}

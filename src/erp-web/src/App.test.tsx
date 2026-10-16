@@ -331,8 +331,9 @@ test('sends NEBEN when the warehouse field is neben', async () => {
   const createCall = fetchMock.mock.calls.find(([requestUrl, requestInit]) =>
     String(requestUrl).endsWith('/sales-orders') && requestInit?.method === 'POST')
   expect(createCall).toBeTruthy()
-  const body = JSON.parse(String(createCall?.[1]?.body)) as { warehouseCode: string }
+  const body = JSON.parse(String(createCall?.[1]?.body)) as { warehouseCode: string; orderNumber: string | null }
   expect(body.warehouseCode).toBe('NEBEN')
+  expect(body.orderNumber).toBeNull()
 })
 
 test('cancels a released order and offers a new one', async () => {

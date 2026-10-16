@@ -199,6 +199,58 @@ internal sealed class DatabaseProbe(string appConnectionString, string adminConn
     public Task<int> CountInvoicesAsync(Guid tenantId, string number) =>
         CountByNumberAsync(tenantId, "invoices", number);
 
+    public Task<int> CountDeliveriesForOrderAsync(Guid tenantId, Guid salesOrderId) =>
+        CountForOrderAsync(tenantId, "deliveries", salesOrderId);
+
+    public Task<int> CountInvoicesForOrderAsync(Guid tenantId, Guid salesOrderId) =>
+        CountForOrderAsync(tenantId, "invoices", salesOrderId);
+
+    public async Task<string> DeliveryNumberForOrderAsync(Guid tenantId, Guid salesOrderId)
+    {
+        var number = await NumberForOrderAsync(tenantId, "deliveries", salesOrderId);
+        return number ?? throw new InvalidOperationException($"No delivery for order {salesOrderId}.");
+    }
+
+    public async Task<IReadOnlyList<long>> InvoiceSequenceForOrdersAsync(Guid tenantId, IReadOnlyCollection<Guid> salesOrderIds)
+    {
+        var numbers = await WithAppAsync(tenantId, async connection =>
+        {
+            await using var command = new NpgsqlCommand(
+                """
+                select "Number"
+                from erp.invoices
+                where "TenantId" = @tenant and "SalesOrderId" = any(@orders)
+                """,
+                connection);
+            command.Parameters.AddWithValue("tenant", tenantId);
+            command.Parameters.AddWithValue("orders", salesOrderIds.ToArray());
+            var values = new List<string>();
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) values.Add(reader.GetString(0));
+            return values;
+        });
+
+        return numbers.Select(long.Parse).OrderBy(value => value).ToArray();
+    }
+
+    public Task<IReadOnlyList<long>> InvoiceSequenceAsync(Guid tenantId) =>
+        WithAppAsync(tenantId, async connection =>
+        {
+            await using var command = new NpgsqlCommand(
+                """
+                select "Number"
+                from erp.invoices
+                where "TenantId" = @tenant
+                """,
+                connection);
+            command.Parameters.AddWithValue("tenant", tenantId);
+            var values = new List<long>();
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) values.Add(long.Parse(reader.GetString(0)));
+            values.Sort();
+            return (IReadOnlyList<long>)values;
+        });
+
     public Task<Guid> OutboxIdForOrderAsync(Guid tenantId, Guid salesOrderId) =>
         WithAppAsync(tenantId, async connection =>
         {
@@ -336,6 +388,31 @@ internal sealed class DatabaseProbe(string appConnectionString, string adminConn
             $"select count(*)::int from {qualified} where \"TenantId\" = @owner and \"Number\" = @number",
             tenantId,
             command => command.Parameters.AddWithValue("number", number)));
+    }
+
+    private Task<int> CountForOrderAsync(Guid tenantId, string table, Guid salesOrderId)
+    {
+        var qualified = new TenantTable("erp", table).Qualified;
+        return WithAppAsync(tenantId, connection => CountAsync(
+            connection,
+            $"select count(*)::int from {qualified} where \"TenantId\" = @owner and \"SalesOrderId\" = @order",
+            tenantId,
+            command => command.Parameters.AddWithValue("order", salesOrderId)));
+    }
+
+    private Task<string?> NumberForOrderAsync(Guid tenantId, string table, Guid salesOrderId)
+    {
+        var qualified = new TenantTable("erp", table).Qualified;
+        return WithAppAsync(tenantId, async connection =>
+        {
+            await using var command = new NpgsqlCommand(
+                $"select \"Number\" from {qualified} where \"TenantId\" = @tenant and \"SalesOrderId\" = @order",
+                connection);
+            command.Parameters.AddWithValue("tenant", tenantId);
+            command.Parameters.AddWithValue("order", salesOrderId);
+            var value = await command.ExecuteScalarAsync();
+            return value as string;
+        });
     }
 
     private async Task<T> WithAppAsync<T>(Guid actingTenant, Func<NpgsqlConnection, Task<T>> action)

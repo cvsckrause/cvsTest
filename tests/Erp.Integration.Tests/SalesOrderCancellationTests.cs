@@ -106,7 +106,7 @@ public sealed class SalesOrderCancellationTests(PostgresFixture fixture)
         var cancel = await api.PostAsync($"/api/v1/sales-orders/{created.Id}/cancel", new { }, Key());
         var stock = await StockAsync(api, graph.ArticleId, "MAIN");
 
-        Assert.Equal(1, await fixture.Probe.CountDeliveriesAsync(fixture.TenantA, $"DEL-{orderNumber}"));
+        Assert.Equal(1, await fixture.Probe.CountDeliveriesForOrderAsync(fixture.TenantA, created.Id));
         Assert.Equal(HttpStatusCode.Conflict, cancel.Status);
         Assert.Contains("Delivered orders cannot be cancelled.", cancel.Body, StringComparison.Ordinal);
         Assert.Equal(7m, stock.OnHand);
@@ -129,7 +129,7 @@ public sealed class SalesOrderCancellationTests(PostgresFixture fixture)
         await ProcessUntilAsync(fixture, releasedId);
 
         var stock = await StockAsync(api, graph.ArticleId, "MAIN");
-        var deliveryNumber = $"DEL-{orderNumber}";
+        var deliveryNumber = await fixture.Probe.DeliveryNumberForOrderAsync(fixture.TenantA, created.Id);
 
         Assert.Equal(7m, stock.OnHand);
         Assert.Equal(0m, stock.Reserved);
@@ -165,7 +165,7 @@ public sealed class SalesOrderCancellationTests(PostgresFixture fixture)
         await ProcessUntilAsync(fixture, releasedId);
 
         var stock = await StockAsync(api, graph.ArticleId, "MAIN");
-        var deliveryNumber = $"DEL-{orderNumber}";
+        var deliveryNumber = await fixture.Probe.DeliveryNumberForOrderAsync(fixture.TenantA, created.Id);
 
         Assert.Equal(7m, stock.OnHand);
         Assert.Equal(0m, stock.Reserved);
@@ -189,14 +189,13 @@ public sealed class SalesOrderCancellationTests(PostgresFixture fixture)
             fixture.TenantA, created.Id, "erp.sales-order.released.v1");
         await ProcessUntilAsync(fixture, releasedId);
 
-        Assert.Equal(0, await fixture.Probe.CountDeliveriesAsync(fixture.TenantA, $"DEL-{orderNumber}"));
-        Assert.Equal(0, await fixture.Probe.CountInvoicesAsync(fixture.TenantA, $"INV-{orderNumber}"));
+        Assert.Equal(0, await fixture.Probe.CountDeliveriesForOrderAsync(fixture.TenantA, created.Id));
+        Assert.Equal(0, await fixture.Probe.CountInvoicesForOrderAsync(fixture.TenantA, created.Id));
         Assert.True(await fixture.Probe.OutboxProcessedAsync(fixture.TenantA, releasedId));
         Assert.Equal(1, await fixture.Probe.CountInboxAsync(releasedId));
         var stock = await StockAsync(api, graph.ArticleId, "MAIN");
         Assert.Equal(10m, stock.OnHand);
         Assert.Equal(0m, stock.Reserved);
-        Assert.Equal(0, await fixture.Probe.CountMovementsAsync(fixture.TenantA, $"DEL-{orderNumber}"));
     }
 
     [Fact]

@@ -28,6 +28,7 @@ public sealed class ErpDbContext(
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
+    public DbSet<NumberRange> NumberRanges => Set<NumberRange>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -203,6 +204,16 @@ public sealed class ErpDbContext(
             entity.Property(x => x.UserId).HasMaxLength(200);
             entity.HasIndex(x => new { x.UserId, x.TenantId }).IsUnique();
             entity.HasIndex(x => x.UserId);
+        });
+
+        modelBuilder.Entity<NumberRange>(entity =>
+        {
+            entity.ToTable("number_ranges");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.DocumentType).HasMaxLength(40);
+            entity.Property(x => x.Prefix).HasMaxLength(20);
+            entity.HasIndex(x => new { x.TenantId, x.DocumentType, x.Year }).IsUnique();
+            entity.HasQueryFilter(x => x.TenantId == tenantContext.TenantId);
         });
     }
 }

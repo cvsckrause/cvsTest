@@ -144,7 +144,7 @@ salesOrders: (status?: string, after?: string) => {
       body: JSON.stringify({
         customerId,
         shipToAddressId,
-        orderNumber,
+        orderNumber: orderNumber.trim() ? orderNumber.trim() : null,
         warehouseCode,
         lines: lines.map((line) => ({ articleId: line.articleId, quantity: line.quantity })),
       }),

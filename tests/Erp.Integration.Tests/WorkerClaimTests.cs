@@ -21,10 +21,10 @@ public sealed class WorkerClaimTests(PostgresFixture fixture)
 
         await OutboxProcessor.ProcessOnceAsync(fixture.WorkerConnectionString);
 
-        Assert.Equal(1, await fixture.Probe.CountDeliveriesAsync(fixture.TenantA, "DEL-" + orderA.Number));
-        Assert.Equal(1, await fixture.Probe.CountInvoicesAsync(fixture.TenantA, "INV-" + orderA.Number));
-        Assert.Equal(1, await fixture.Probe.CountDeliveriesAsync(fixture.TenantB, "DEL-" + orderB.Number));
-        Assert.Equal(1, await fixture.Probe.CountInvoicesAsync(fixture.TenantB, "INV-" + orderB.Number));
+        Assert.Equal(1, await fixture.Probe.CountDeliveriesForOrderAsync(fixture.TenantA, orderA.Id));
+        Assert.Equal(1, await fixture.Probe.CountInvoicesForOrderAsync(fixture.TenantA, orderA.Id));
+        Assert.Equal(1, await fixture.Probe.CountDeliveriesForOrderAsync(fixture.TenantB, orderB.Id));
+        Assert.Equal(1, await fixture.Probe.CountInvoicesForOrderAsync(fixture.TenantB, orderB.Id));
     }
 
     [Fact]
@@ -36,8 +36,8 @@ public sealed class WorkerClaimTests(PostgresFixture fixture)
             OutboxProcessor.ProcessOnceAsync(fixture.WorkerConnectionString),
             OutboxProcessor.ProcessOnceAsync(fixture.WorkerConnectionString));
 
-        Assert.Equal(1, await fixture.Probe.CountDeliveriesAsync(fixture.TenantA, "DEL-" + order.Number));
-        Assert.Equal(1, await fixture.Probe.CountInvoicesAsync(fixture.TenantA, "INV-" + order.Number));
+        Assert.Equal(1, await fixture.Probe.CountDeliveriesForOrderAsync(fixture.TenantA, order.Id));
+        Assert.Equal(1, await fixture.Probe.CountInvoicesForOrderAsync(fixture.TenantA, order.Id));
     }
 
     [Fact]
@@ -57,17 +57,17 @@ public sealed class WorkerClaimTests(PostgresFixture fixture)
         var failed = await fixture.Probe.OutboxStateAsync(fixture.TenantA, messageId);
         Assert.Equal(3, failed.Attempts);
         Assert.True(failed.DeadLettered);
-        Assert.Equal(0, await fixture.Probe.CountDeliveriesAsync(fixture.TenantA, "DEL-" + order.Number));
+        Assert.Equal(0, await fixture.Probe.CountDeliveriesForOrderAsync(fixture.TenantA, order.Id));
 
         await OutboxProcessor.ProcessOnceAsync(fixture.WorkerConnectionString, options);
-        Assert.Equal(0, await fixture.Probe.CountDeliveriesAsync(fixture.TenantA, "DEL-" + order.Number));
+        Assert.Equal(0, await fixture.Probe.CountDeliveriesForOrderAsync(fixture.TenantA, order.Id));
 
         await fixture.Probe.ReplacePayloadAsync(fixture.TenantA, messageId, payload);
         Assert.True(await OutboxReplay.ReplayAsync(fixture.WorkerConnectionString, messageId));
         await OutboxProcessor.ProcessOnceAsync(fixture.WorkerConnectionString, options);
 
-        Assert.Equal(1, await fixture.Probe.CountDeliveriesAsync(fixture.TenantA, "DEL-" + order.Number));
-        Assert.Equal(1, await fixture.Probe.CountInvoicesAsync(fixture.TenantA, "INV-" + order.Number));
+        Assert.Equal(1, await fixture.Probe.CountDeliveriesForOrderAsync(fixture.TenantA, order.Id));
+        Assert.Equal(1, await fixture.Probe.CountInvoicesForOrderAsync(fixture.TenantA, order.Id));
     }
 
     private async Task<ReleasedOrder> ReleaseOrderAsync(Guid tenantId, string label)
