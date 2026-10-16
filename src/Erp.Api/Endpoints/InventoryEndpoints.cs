@@ -128,7 +128,7 @@ internal static class InventoryEndpoints
                 movement.Id,
                 auditPayload,
                 httpContext.TraceIdentifier));
-            db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, Idempotency.StockGoodsReceipt, movement.Id));
+            db.IdempotencyRecords.Add(IdempotencyRecord.Create(tenant.TenantId, idempotencyKey, Idempotency.StockGoodsReceipt, movement.Id, null));
 
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
