@@ -59,3 +59,43 @@ test('createArticle sends Authorization when the cognito session has an access t
   expect(headers.Authorization).toBe('Bearer access-token-1')
   expect(headers['X-Tenant-Id']).toBe('11111111-1111-1111-1111-111111111111')
 })
+
+test('a failed read names the load, and a problem detail wins over the fallback', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: false,
+      status: 403,
+      headers: { get: () => '' },
+      text: async () => '',
+    })),
+  )
+
+  await expect(erpApi.customers()).rejects.toThrow('Laden fehlgeschlagen (403)')
+
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: false,
+      status: 403,
+      headers: { get: () => 'application/problem+json' },
+      text: async () => JSON.stringify({ detail: 'This user has no tenant membership.' }),
+    })),
+  )
+
+  await expect(erpApi.articles()).rejects.toThrow('This user has no tenant membership.')
+})
+
+test('a failed save stays a save failure when the response has no detail', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: false,
+      status: 403,
+      headers: { get: () => '' },
+      text: async () => '',
+    })),
+  )
+
+  await expect(erpApi.createArticle('SKU-1', 'Test', 10, 0)).rejects.toThrow('Speichern fehlgeschlagen (403)')
+})

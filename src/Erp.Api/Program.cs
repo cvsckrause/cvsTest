@@ -17,6 +17,10 @@ if (authenticationEnabled && string.IsNullOrWhiteSpace(cognitoClientId))
 }
 
 var developmentIdentity = DevelopmentIdentity.FromConfiguration(builder.Configuration);
+var bootstrapTenantId = Guid.TryParse(builder.Configuration["Authentication:BootstrapTenantId"], out var parsedBootstrap)
+    && parsedBootstrap != Guid.Empty
+    ? parsedBootstrap
+    : (Guid?)null;
 if (developmentIdentity.Enabled && !builder.Environment.IsDevelopment() && authenticationEnabled)
 {
     throw new InvalidOperationException(
@@ -84,7 +88,7 @@ app.Use(async (context, next) =>
         var identity = developmentIdentity.Resolve();
         if (identity is null)
         {
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await WriteForbidden(context, "Development identity is not configured.");
             return;
         }
 
@@ -103,18 +107,27 @@ app.Use(async (context, next) =>
     var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? context.User.FindFirstValue("sub");
     if (string.IsNullOrWhiteSpace(userId))
     {
-        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await WriteForbidden(context, "The access token has no subject.");
         return;
     }
 
-    var memberships = await context.RequestServices.GetRequiredService<ITenantMemberships>()
-        .ListAsync(userId, context.RequestAborted);
+    var membershipDirectory = context.RequestServices.GetRequiredService<ITenantMemberships>();
+    var memberships = await membershipDirectory.ListAsync(userId, context.RequestAborted);
+    if (memberships.Count == 0 && bootstrapTenantId is Guid bootstrap)
+    {
+        await membershipDirectory.EnsureDefaultAsync(userId, bootstrap, context.RequestAborted);
+        memberships = await membershipDirectory.ListAsync(userId, context.RequestAborted);
+    }
+
     var choice = TenantMembershipSelection.Choose(
         context.Request.Headers[TenantMembershipSelection.TenantHeader].FirstOrDefault(),
         memberships);
     if (choice.TenantId is not Guid tenantId)
     {
-        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        var detail = memberships.Count == 0
+            ? "This user has no tenant membership."
+            : "The requested tenant is not allowed.";
+        await WriteForbidden(context, detail);
         return;
     }
 
@@ -159,6 +172,12 @@ api.MapSalesEndpoints();
 
 app.MapFallbackToFile("index.html");
 app.Run();
+
+static Task WriteForbidden(HttpContext context, string detail) =>
+    Results.Problem(
+        title: "The request is not allowed.",
+        detail: detail,
+        statusCode: StatusCodes.Status403Forbidden).ExecuteAsync(context);
 
 static string BuildConnectionString(IConfiguration configuration)
 {

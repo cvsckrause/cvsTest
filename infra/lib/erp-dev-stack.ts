@@ -211,6 +211,8 @@ export class ErpDevStack extends cdk.Stack {
         Authentication__ClientId: userPoolClient.userPoolClientId,
         // domainName is the Cognito prefix only; Hosted UI host is prefix.auth.<region>.amazoncognito.com
         Authentication__HostedUiDomain: `${userPoolDomain.domainName}.auth.${this.region}.amazoncognito.com`,
+        // Self sign-up is off. A Cognito user with no row yet joins the synthetic tenant.
+        Authentication__BootstrapTenantId: '11111111-1111-1111-1111-111111111111',
       },
       secrets: {
         Database__Password: ecs.Secret.fromSecretsManager(appSecret, 'password'),
