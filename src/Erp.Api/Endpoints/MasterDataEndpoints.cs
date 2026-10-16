@@ -196,27 +196,23 @@ internal static class MasterDataEndpoints
                 query = query.Where(article => string.Compare(article.Sku, after) > 0);
             }
 
-            var articles = await query.Take(pageSize)
-                .Select(article => new ArticleResponse(article.Id, article.Sku, article.Name, article.SalesPrice))
-                .ToListAsync(cancellationToken);
-            return Results.Ok(articles);
+            var articles = await query.Take(pageSize).ToListAsync(cancellationToken);
+            return Results.Ok(articles.Select(ToArticleResponse).ToList());
         }).Produces<List<ArticleResponse>>();
 
         api.MapPost("/articles", async (CreateArticleRequest request, ITenantContext tenant, ErpDbContext db, CancellationToken cancellationToken) =>
         {
-            var article = Article.Create(tenant.TenantId, request.Sku, request.Name, request.SalesPrice);
+            var article = Article.Create(tenant.TenantId, request.Sku, request.Name, request.SalesPrice, ParseTaxCode(request.TaxCode));
             db.Articles.Add(article);
             db.StockBalances.Add(StockBalance.Create(tenant.TenantId, article.Id, request.WarehouseCode ?? "MAIN", request.OpeningStock));
             await db.SaveChangesAsync(cancellationToken);
-            return Results.Created($"/api/v1/articles/{article.Id}", new ArticleResponse(article.Id, article.Sku, article.Name, article.SalesPrice));
+            return Results.Created($"/api/v1/articles/{article.Id}", ToArticleResponse(article));
         }).Produces<ArticleResponse>(StatusCodes.Status201Created);
 
         api.MapGet("/articles/{id:guid}", async (Guid id, ErpDbContext db, CancellationToken cancellationToken) =>
         {
             var article = await db.Articles.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-            return article is null
-                ? Results.NotFound()
-                : Results.Ok(new ArticleResponse(article.Id, article.Sku, article.Name, article.SalesPrice));
+            return article is null ? Results.NotFound() : Results.Ok(ToArticleResponse(article));
         }).Produces<ArticleResponse>().Produces(StatusCodes.Status404NotFound);
 
         api.MapPut("/articles/{id:guid}", async (Guid id, UpdateArticleRequest request, ErpDbContext db, CancellationToken cancellationToken) =>
@@ -224,13 +220,25 @@ internal static class MasterDataEndpoints
             var article = await db.Articles.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
             if (article is null) return Results.NotFound();
 
-            article.Update(request.Name, request.SalesPrice);
+            article.Update(request.Name, request.SalesPrice, request.TaxCode is null ? article.TaxCode : ParseTaxCode(request.TaxCode));
             await db.SaveChangesAsync(cancellationToken);
-            return Results.Ok(new ArticleResponse(article.Id, article.Sku, article.Name, article.SalesPrice));
+            return Results.Ok(ToArticleResponse(article));
         }).Produces<ArticleResponse>().Produces(StatusCodes.Status404NotFound);
 
         return api;
     }
+
+    private static TaxCode ParseTaxCode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return TaxCode.Standard19;
+        var name = Enum.GetNames<TaxCode>().FirstOrDefault(item => item.Equals(value.Trim(), StringComparison.OrdinalIgnoreCase));
+        return name is null
+            ? throw new ArgumentException("Tax code must be Standard19, Reduced7, or Zero.", nameof(value))
+            : Enum.Parse<TaxCode>(name);
+    }
+
+    private static ArticleResponse ToArticleResponse(Article article) =>
+        new(article.Id, article.Sku, article.Name, article.SalesPrice, article.TaxCode.ToString());
 
     private static AddressResponse ToAddressResponse(Address address) =>
         new(
@@ -274,6 +282,6 @@ public sealed record CustomerAddressResponse(
     Guid AddressId,
     string Role,
     AddressResponse Address);
-public sealed record CreateArticleRequest(string Sku, string Name, decimal SalesPrice, decimal OpeningStock, string? WarehouseCode);
-public sealed record UpdateArticleRequest(string Name, decimal SalesPrice);
-public sealed record ArticleResponse(Guid Id, string Sku, string Name, decimal SalesPrice);
+public sealed record CreateArticleRequest(string Sku, string Name, decimal SalesPrice, decimal OpeningStock, string? WarehouseCode, string? TaxCode = null);
+public sealed record UpdateArticleRequest(string Name, decimal SalesPrice, string? TaxCode = null);
+public sealed record ArticleResponse(Guid Id, string Sku, string Name, decimal SalesPrice, string TaxCode);

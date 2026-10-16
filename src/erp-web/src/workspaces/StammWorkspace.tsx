@@ -1,4 +1,4 @@
-import { euro } from '../format'
+import { euro, taxCodes, taxRateLabel } from '../format'
 import type { StammModel } from './stamm-model'
 
 export function StammWorkspace({ model }: { model: StammModel }) {
@@ -68,6 +68,14 @@ export function StammWorkspace({ model }: { model: StammModel }) {
                 Verkaufspreis
                 <input type="number" min="0" step="0.01" value={articleForm.salesPrice} onChange={(event) => setArticleForm((current) => ({ ...current, salesPrice: Number(event.target.value) }))} required />
               </label>
+              <label>
+                Umsatzsteuer
+                <select value={articleForm.taxCode} onChange={(event) => setArticleForm((current) => ({ ...current, taxCode: event.target.value }))}>
+                  {taxCodes.map((item) => (
+                    <option key={item.code} value={item.code}>{item.label}</option>
+                  ))}
+                </select>
+              </label>
               {!editingArticleId && (
                 <label>
                   Anfangsbestand
@@ -87,13 +95,14 @@ export function StammWorkspace({ model }: { model: StammModel }) {
             </div>
             <div className="master-list" role="table" aria-label="Artikelliste">
               <div className="master-row master-head" role="row">
-                <span>SKU</span><span>Bezeichnung</span><span>Preis</span><span />
+                <span>SKU</span><span>Bezeichnung</span><span>Preis</span><span>USt</span><span />
               </div>
               {articles.map((article) => (
                 <div className="master-row" role="row" key={article.id}>
                   <strong>{article.sku}</strong>
                   <span>{article.name}</span>
                   <span>{euro(article.salesPrice)}</span>
+                  <span>{taxRateLabel(article.taxCode)}</span>
                   <button className="secondary" type="button" onClick={() => editArticle(article)}>Bearbeiten</button>
                 </div>
               ))}

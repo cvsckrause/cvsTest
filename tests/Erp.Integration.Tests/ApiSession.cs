@@ -25,6 +25,9 @@ internal sealed class ApiSession : IDisposable
     public Task<ApiResult> PostAsync(string path, object body, string? idempotencyKey = null, string? correlationId = null) =>
         SendAsync(HttpMethod.Post, path, body, idempotencyKey, correlationId);
 
+    public Task<ApiResult> PutAsync(string path, object body) =>
+        SendAsync(HttpMethod.Put, path, body);
+
     public async Task<ApiResult> PostOkAsync(string path, object body, string? idempotencyKey = null, string? correlationId = null)
     {
         var result = await PostAsync(path, body, idempotencyKey, correlationId);

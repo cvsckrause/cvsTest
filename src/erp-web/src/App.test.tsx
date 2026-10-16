@@ -20,7 +20,7 @@ function jsonResponse(data: unknown, ok = true, status = ok ? 200 : 400) {
 }
 
 const customer = { id: 'customer-1', number: '10000', name: 'Nordrad GmbH' }
-const article = { id: 'article-1', sku: 'BIKE-001', name: 'Cityrad', salesPrice: 799 }
+const article = { id: 'article-1', sku: 'BIKE-001', name: 'Cityrad', salesPrice: 799, taxCode: 'Standard19' }
 const address = {
   id: 'address-1',
   name: 'Nordrad GmbH',
@@ -161,6 +161,31 @@ test('shows the problem detail when saving an article is rejected', async () => 
   fireEvent.click(screen.getByRole('button', { name: 'Artikel anlegen' }))
 
   expect((await screen.findAllByText('An article with this SKU already exists.')).length).toBeGreaterThan(0)
+})
+
+test('sends the chosen tax code when creating an article and lists the rate', async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url.includes('/articles') && init?.method === 'POST') return jsonResponse({ ...article, id: 'article-2', taxCode: 'Reduced7' }, true, 201)
+    return route(url)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  render(<App />)
+  fireEvent.click(screen.getByTitle('Stammdaten'))
+  const articleTable = await screen.findByRole('table', { name: 'Artikelliste' })
+  expect(within(articleTable).getByText('19 %')).toBeInTheDocument()
+
+  fireEvent.change(screen.getByLabelText('SKU'), { target: { value: 'BOOK-001' } })
+  fireEvent.change(screen.getByLabelText('Bezeichnung'), { target: { value: 'Fahrradbuch' } })
+  fireEvent.change(screen.getByLabelText('Umsatzsteuer'), { target: { value: 'Reduced7' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Artikel anlegen' }))
+
+  await waitFor(() => {
+    const createCall = fetchMock.mock.calls.find(([requestUrl, requestInit]) =>
+      String(requestUrl).includes('/articles') && requestInit?.method === 'POST')
+    expect(JSON.parse(String(createCall?.[1]?.body))).toMatchObject({ sku: 'BOOK-001', taxCode: 'Reduced7' })
+  })
 })
 
 test('shows the sales order list and opens capture from it', async () => {

@@ -5,7 +5,7 @@ import type { Address, Article, Customer } from '../api'
 import { keepOrFirst } from '../format'
 import type { AppRoute, StammTab } from '../route'
 
-const emptyArticle = { sku: '', name: '', salesPrice: 0, openingStock: 0 }
+const emptyArticle = { sku: '', name: '', salesPrice: 0, openingStock: 0, taxCode: 'Standard19' }
 const emptyAddress = { name: '', street: '', postalCode: '', city: '', countryCode: 'DE', additionalLine: '' }
 
 type StammModelArgs = {
@@ -63,7 +63,7 @@ export function useStammWorkspace({
     const apply = (article: Article) => {
       if (cancelled) return
       setEditingArticleId(article.id)
-      setArticleForm({ sku: article.sku, name: article.name, salesPrice: article.salesPrice, openingStock: 0 })
+      setArticleForm(articleFormOf(article))
     }
     if (known) apply(known)
     else {
@@ -113,7 +113,7 @@ export function useStammWorkspace({
 
   function editArticle(article: Article) {
     setEditingArticleId(article.id)
-    setArticleForm({ sku: article.sku, name: article.name, salesPrice: article.salesPrice, openingStock: 0 })
+    setArticleForm(articleFormOf(article))
     navigate({ workspace: 'stamm', tab: 'articles', documentId: article.id })
   }
 
@@ -147,10 +147,10 @@ export function useStammWorkspace({
     setBusy(true)
     try {
       if (editingArticleId) {
-        await erpApi.updateArticle(editingArticleId, articleForm.name, articleForm.salesPrice)
+        await erpApi.updateArticle(editingArticleId, articleForm.name, articleForm.salesPrice, articleForm.taxCode)
         setNotice(`Artikel ${articleForm.sku || editingArticleId} aktualisiert.`)
       } else {
-        await erpApi.createArticle(articleForm.sku, articleForm.name, articleForm.salesPrice, articleForm.openingStock)
+        await erpApi.createArticle(articleForm.sku, articleForm.name, articleForm.salesPrice, articleForm.openingStock, articleForm.taxCode)
         setNotice(`Artikel ${articleForm.sku} angelegt.`)
       }
       setEditingArticleId(null)
@@ -240,6 +240,10 @@ export function useStammWorkspace({
     linkAddress,
     openSales,
   }
+}
+
+function articleFormOf(article: Article) {
+  return { sku: article.sku, name: article.name, salesPrice: article.salesPrice, openingStock: 0, taxCode: article.taxCode }
 }
 
 export type StammModel = ReturnType<typeof useStammWorkspace>

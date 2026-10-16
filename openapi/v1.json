@@ -124,13 +124,17 @@
           },
           "sku": {
             "type": "string"
+          },
+          "taxCode": {
+            "type": "string"
           }
         },
         "required": [
           "id",
           "sku",
           "name",
-          "salesPrice"
+          "salesPrice",
+          "taxCode"
         ],
         "type": "object"
       },
@@ -194,6 +198,12 @@
           },
           "sku": {
             "type": "string"
+          },
+          "taxCode": {
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "warehouseCode": {
             "type": [
@@ -894,6 +904,12 @@
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
             "type": [
               "number",
+              "string"
+            ]
+          },
+          "taxCode": {
+            "type": [
+              "null",
               "string"
             ]
           }

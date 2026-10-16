@@ -45,7 +45,7 @@ else
 
 if (!await db.Articles.AnyAsync())
 {
-    var article = Article.Create(tenantId, "BIKE-001", "Cityrad Nord", 799m);
+    var article = Article.Create(tenantId, "BIKE-001", "Cityrad Nord", 799m, TaxCode.Standard19);
     db.Articles.Add(article);
     db.StockBalances.Add(StockBalance.Create(tenantId, article.Id, "MAIN", 25));
 }

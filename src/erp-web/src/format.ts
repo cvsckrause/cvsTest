@@ -30,6 +30,16 @@ export function formatWhen(value: string) {
   return `${get('day')}.${get('month')}.${get('year')} / ${get('hour')}:${get('minute')}:${get('second')}`
 }
 
+export const taxCodes = [
+  { code: 'Standard19', label: '19 %' },
+  { code: 'Reduced7', label: '7 %' },
+  { code: 'Zero', label: '0 %' },
+] as const
+
+export function taxRateLabel(code: string) {
+  return taxCodes.find((item) => item.code === code)?.label ?? code
+}
+
 export function keepOrFirst(current: string, ids: readonly string[]) {
   return ids.includes(current) ? current : (ids[0] ?? '')
 }

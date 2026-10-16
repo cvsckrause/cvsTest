@@ -83,6 +83,7 @@ public sealed class ErpDbContext(
             entity.Property(x => x.Sku).HasMaxLength(80);
             entity.Property(x => x.Name).HasMaxLength(240);
             entity.Property(x => x.SalesPrice).HasPrecision(18, 4);
+            entity.Property(x => x.TaxCode).HasConversion<string>().HasMaxLength(20).HasDefaultValue(TaxCode.Standard19);
             entity.HasIndex(x => new { x.TenantId, x.Sku }).IsUnique();
             entity.HasQueryFilter(x => x.TenantId == tenantContext.TenantId);
         });

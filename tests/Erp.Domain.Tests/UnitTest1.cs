@@ -226,12 +226,12 @@ public sealed class MasterDataTests
         var article = Article.Create(TenantId, "BIKE-001", "Cityrad Nord", 799m);
         var sku = article.Sku;
 
-        article.Update("Cityrad Süd", 849m);
+        article.Update("Cityrad Süd", 849m, TaxCode.Standard19);
 
         Assert.Equal(sku, article.Sku);
         Assert.Equal("Cityrad Süd", article.Name);
         Assert.Equal(849m, article.SalesPrice);
-        Assert.Throws<ArgumentException>(() => article.Update(" ", 10m));
-        Assert.Throws<ArgumentOutOfRangeException>(() => article.Update("Valid", -1m));
+        Assert.Throws<ArgumentException>(() => article.Update(" ", 10m, TaxCode.Standard19));
+        Assert.Throws<ArgumentOutOfRangeException>(() => article.Update("Valid", -1m, TaxCode.Standard19));
     }
 }

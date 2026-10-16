@@ -1086,6 +1086,7 @@ export interface components {
             /** Format: double */
             salesPrice: number | string;
             sku: string;
+            taxCode: string;
         };
         CreateAddressRequest: {
             additionalLine: null | string;
@@ -1102,6 +1103,7 @@ export interface components {
             /** Format: double */
             salesPrice: number | string;
             sku: string;
+            taxCode?: null | string;
             warehouseCode: null | string;
         };
         CreateCustomerRequest: {
@@ -1292,6 +1294,7 @@ export interface components {
             name: string;
             /** Format: double */
             salesPrice: number | string;
+            taxCode?: null | string;
         };
     };
     responses: never;

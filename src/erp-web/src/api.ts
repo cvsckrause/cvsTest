@@ -82,15 +82,15 @@ export const erpApi = {
   customers: (after?: string) =>
     request<Customer[]>(`/customers${after ? `?after=${encodeURIComponent(after)}` : ''}`),
   articles: (q?: string) => request<Article[]>(`/articles${q ? `?q=${encodeURIComponent(q)}` : ''}`),
-  createArticle: (sku: string, name: string, salesPrice: number, openingStock = 0) =>
+  createArticle: (sku: string, name: string, salesPrice: number, openingStock = 0, taxCode = 'Standard19') =>
     request<Article>('/articles', {
       method: 'POST',
-      body: JSON.stringify({ sku, name, salesPrice, openingStock }),
+      body: JSON.stringify({ sku, name, salesPrice, openingStock, taxCode }),
     }),
-  updateArticle: (id: string, name: string, salesPrice: number) =>
+  updateArticle: (id: string, name: string, salesPrice: number, taxCode: string) =>
     request<Article>(`/articles/${id}`, {
       method: 'PUT',
-      body: JSON.stringify({ name, salesPrice }),
+      body: JSON.stringify({ name, salesPrice, taxCode }),
     }),
   addresses: (q?: string) => request<Address[]>(`/addresses${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   createAddress: (payload: Omit<Address, 'id'>) =>

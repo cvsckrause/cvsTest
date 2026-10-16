@@ -260,6 +260,13 @@ namespace Erp.Persistence.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
 
+                    b.Property<string>("TaxCode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Standard19");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
