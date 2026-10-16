@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Only print what would be created (uncheck to create labels, milestones, and issues)
+        description: Only print the plan (uncheck to create missing issues and fill missing labels and milestones)
         type: boolean
         default: true
 

@@ -593,9 +593,9 @@ All six were accepted as recommended on 2026-10-14.
 
 Lanes are expressed as `lane:A` / `lane:B` labels; assign people when the developers are known.
 
-The run is idempotent. An issue whose title already starts with its key (for example `R-01 — `) is skipped, so a re-run only fills gaps.
+The run is idempotent. An issue whose title already starts with its key (for example `R-01 — `) is not recreated. A re-run adds plan labels the issue is missing, including `lane:A` or `lane:B`, and sets the milestone when the issue has none. Labels already on the issue stay.
 
-Run it from GitHub: Actions → **Create roadmap issues** → Run workflow. `dry_run` is checked by default and only prints the plan to the job summary. Uncheck it to create the issues. The workflow must be on `main` to appear in the Actions list.
+Run it from GitHub: Actions → **Create roadmap issues** → Run workflow. `dry_run` is checked by default and only prints the plan to the job summary. Uncheck it to create missing issues and fill those gaps. The workflow must be on `main` to appear in the Actions list.
 
 Local preview (no writes; `GITHUB_TOKEN` is optional and is used only to read existing labels, milestones, and issues):
 
