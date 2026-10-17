@@ -42,6 +42,14 @@ public static class Money
     public static decimal Round(decimal amount) => Math.Round(amount, 2, MidpointRounding.AwayFromZero);
 }
 
+public static class BusinessDate
+{
+    private static readonly TimeZoneInfo Zone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin");
+
+    public static DateOnly Berlin(DateTimeOffset instant) =>
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, Zone).DateTime);
+}
+
 public sealed record AddressSnapshot(
     string Name,
     string Street,

@@ -73,6 +73,11 @@ public sealed class Worker(
                         throw new InvalidOperationException("Released-order payload is missing ship-to snapshot.");
                     }
 
+                    if (released.Seller is null)
+                    {
+                        throw new InvalidOperationException("Released-order payload is missing seller snapshot.");
+                    }
+
                     if (!await SalesOrderRowLock.TryLockAsync(db, released.SalesOrderId, cancellationToken))
                     {
                         throw new InvalidOperationException("Released-order payload refers to a missing sales order.");
@@ -99,11 +104,26 @@ public sealed class Worker(
                             released.SalesOrderId,
                             deliveryNumber,
                             released.ShipTo));
-                        db.Invoices.Add(new Invoice(
+                        var invoiceDate = BusinessDate.Berlin(message.OccurredAt);
+                        db.Invoices.Add(Invoice.Issue(
                             released.TenantId,
                             released.SalesOrderId,
                             invoiceNumber,
-                            released.NetAmount));
+                            invoiceDate,
+                            invoiceDate,
+                            released.Seller,
+                            new InvoiceBuyer(
+                                order.BuyerName,
+                                order.BuyerNumber,
+                                order.BillToStreet,
+                                order.BillToPostalCode,
+                                order.BillToCity,
+                                order.BillToCountryCode,
+                                order.BillToAdditionalLine),
+                            order.Lines
+                                .Select(line => new InvoiceLineInput(
+                                    line.Sku, line.Description, line.Quantity, line.UnitPrice, line.TaxCode))
+                                .ToArray()));
                         var occurredAt = DateTimeOffset.UtcNow;
                         foreach (var line in order.Lines)
                         {
@@ -209,5 +229,6 @@ public sealed class Worker(
         Guid SalesOrderId,
         string SalesOrderNumber,
         decimal NetAmount,
-        AddressSnapshot? ShipTo);
+        AddressSnapshot? ShipTo,
+        SellerSnapshot? Seller);
 }

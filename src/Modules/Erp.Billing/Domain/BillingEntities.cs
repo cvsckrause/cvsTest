@@ -52,18 +52,6 @@ public sealed class Invoice : ITenantEntity
     {
     }
 
-    // The worker still numbers a net-only invoice until Phase C replaces this call.
-    public Invoice(Guid tenantId, Guid salesOrderId, string number, decimal netAmount)
-    {
-        Id = Guid.NewGuid();
-        TenantId = tenantId;
-        SalesOrderId = salesOrderId;
-        Number = number;
-        NetAmount = netAmount;
-        ContentComplete = false;
-        CreatedAt = DateTimeOffset.UtcNow;
-    }
-
     public static Invoice Issue(
         Guid tenantId,
         Guid salesOrderId,
