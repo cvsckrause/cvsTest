@@ -21,7 +21,7 @@ execution: code
   - Do not grant `erp_worker` access to `erp.mandanten`.
   - Do not rewrite stored invoice rows.
   - Do not issue a 0 % intra-EU invoice without both USt-IdNrs and a ship-to in another EU member state (R18, R20, R21).
-- **Ships as:** Three pull requests against `main`, one per phase A–C. Phase D (tax-free intra-EU supply) is a fourth pull request that can be cut without affecting A–C.
+- **Ships as:** Three pull requests against `main`, one per phase A–C. Phase D (tax-free intra-EU supply) is a fourth pull request that can be cut without affecting A–C. Phase B and Phase C merge separately, but they deploy as one window: stop the worker before the Phase B image starts, and start it only after the Phase C migrator exits 0. The worker that still numbers a net-only invoice must not run once seller details gate release.
 
 ---
 
@@ -77,7 +77,7 @@ Invoice content
 Order totals
 
 - R13. The order's net amount in the order detail, the order list, and the order summary equals the sum of its rounded line nets (R7).
-- R19. A saved order shows net, tax, and gross per rate and in total, computed per R7 from its frozen line tax codes. Its invoice carries the same figures.
+- R19. A saved order shows net, tax, and gross per rate and in total, from the same function as its invoice. That function takes the frozen line tax codes and, from Phase D, the frozen intra-EU flag. Its invoice carries the same figures.
 
 Presentation
 
@@ -142,7 +142,7 @@ Tax-free intra-EU supply (Phase D)
 ### Key Technical Decisions
 
 - KTD1. **The API freezes every invoice input, and the worker reads only the locked order and the event payload.** Order creation freezes line description, tax code, and bill-to on the order. Release reads the seller details through `erp_app`, refuses incomplete ones (R4), and writes them into the release payload. The worker stops reading the payload's `NetAmount` and never reads `Article`, `CustomerAddress`, or `Mandant`. Reason: `erp_worker` cannot read `mandanten`, and any data error in the worker rolls back the delivery and goods issue with it, then dead-letters after five attempts while the UI keeps showing "wird erzeugt …". Freezing up front turns those errors into 4xx responses the user can act on and makes a replay days later produce the same invoice (R9).
-- KTD2. **The release event stays `erp.sales-order.released.v1` and gains a `seller` block one phase before the worker reads it.** The API writes the block from Phase B on, together with the R4 gate. The field is additive, so the Phase B worker, still on the old code, ignores it. The Phase C worker fails a message without a `seller` block rather than issuing an incomplete invoice. By then every message written since Phase B carries the block, including releases accepted by old API tasks during the Phase C rollout, because those tasks already run Phase B code. The Phase C pre-deploy check only confirms that no message from before Phase B is still pending (see Documentation / Operational Notes).
+- KTD2. **The release event stays `erp.sales-order.released.v1` and gains a `seller` block, and the worker does not read it until Phase C.** The API writes the block from Phase B on, together with the R4 gate. Stop the worker before the Phase B image starts. The worker that still allocates an invoice number from `NetAmount` alone must not run in that window, or it numbers a Rechnung that can never gain the seller address (the stop condition, and KD4 forbids backfilling it). Start the worker only after the Phase C migrator exits 0. The Phase C worker fails a message without a `seller` block rather than issuing an incomplete invoice. Leave every pending `released.v1` message, including those written since Phase B, unprocessed until that migration finishes, then replay them with `erp.replay_outbox`. `claim_outbox` skips rows that already have `DeadLetteredAt`, so a message dead-lettered in the window does not recover on its own.
 - KTD3. **Tax codes map to rates and EN 16931 categories in one domain table.** `TaxCode` is an enum in `Erp.BuildingBlocks` (stored as a string), because `Erp.MasterData`, `Erp.Sales`, and `Erp.Billing` all use it and modules may reference only `Erp.BuildingBlocks` (`ModuleBoundaryTests`). A lookup in `Erp.Billing` maps each code to a rate and category: `Standard19` → 19 % S, `Reduced7` → 7 % S, `Zero` → 0 % Z. An intra-EU supply maps every line to 0 % K with exemption reason code `VATEX-EU-IC` (Phase D). The rate is looked up when the invoice is issued and stored on each invoice line and tax total. A later rate change therefore never alters an issued invoice, and AT/CH rates (D4) replace one lookup.
 - KTD4. **One rounding function, half away from zero.** `Erp.BuildingBlocks` gets a 2-decimal commercial rounding helper that passes `MidpointRounding.AwayFromZero` explicitly, because .NET's default rounds half to even. The invoice, `SalesOrder.NetAmount`, and the line net all use it. The order list projection rounds each line in SQL with `round(numeric, 2)`, which PostgreSQL also rounds half away from zero, and a test pins that the list and detail amounts match (R13).
 - KTD5. **Invoice content is stored, not recomputed.** `erp.invoices` gains header columns: invoice and delivery date (`date`), seller and buyer snapshot columns, total tax and gross, and `ContentComplete`. The existing `NetAmount` holds the total net and keeps its `numeric(18,4)` type, so legacy values stay exactly as stored. New invoices write it with 2 decimals. Two new tenant tables follow the address-table pattern with `TenantId` and forced `tenant_isolation`: `invoice_lines` and `invoice_tax_totals`. New amount columns are `numeric(18,2)`, unit price and quantity keep `numeric(18,4)`, and rates are `numeric(5,2)` percent.
@@ -336,7 +336,7 @@ flowchart TB
 - **Approach:**
   1. `SalesOrder.AddLine` takes a description and tax code, and `SalesOrderLine` stores both. Order creation passes `article.Name` and `article.TaxCode`.
   2. `SalesOrderLine` exposes its rounded net. `SalesOrder.NetAmount` sums rounded line nets, and the order list projection rounds each line in SQL (KTD4).
-  3. The draft net in `sales-model.ts` rounds each line to 2 decimals, half away from zero, before summing, so the capture summary matches the saved order. Round on an epsilon-corrected value, since `1.005 * 100` is `100.49999…` in binary floating point.
+  3. The draft net in `sales-model.ts` rounds each line with the shared `roundCents` helper before summing, so the capture summary matches the saved order. `roundCents` scales by 100 through `toPrecision(15)` and then `Math.round`, half away from zero. Do not add `Number.EPSILON`: that sends 2.135 to 2.13 and 4.015 to 4.01. A quantity of 1 at 1.005, 2.135, and 4.015 must show 1.01, 2.14, and 4.02.
   4. `SalesOrderLineResponse` gains `description` and `taxCode`. Regenerate the OpenAPI document and the TS types.
   5. Write the Phase A migration: the article tax code column and the order line tax code column with defaults, the order line description column, and the description backfill with the RLS toggle on `sales_order_lines` and `articles` (KTD7).
 - **Execution note:** Write the upgrade test first and confirm that it fails when the toggle leaves out `articles`, as `InvoicePrefixUpgradeTests` did for R-22.
@@ -517,7 +517,7 @@ flowchart TB
   - `GET /sales-orders/{id}/invoices` returns the same content in its list.
   - Covers AE8 (API part). A legacy invoice returns `contentComplete: false`, its number and net amount, `lines: []`, and `taxTotals: []`.
   - Tenant B gets 404 for tenant A's invoice (existing check stays).
-- **Verification:** Integration tests pass. `openapi/v1.json` and `api.generated.ts` change only by the invoice additions, since U1, U2, U3, and U4 regenerated them for theirs.
+- **Verification:** Integration tests pass. The Phase C OpenAPI and generated-client diff is the invoice content plus the U13 order fields `taxTotals`, `taxAmount`, and `grossAmount`.
 
 ### U9. Invoice panel in the sales workspace
 
@@ -549,7 +549,7 @@ flowchart TB
 - **Files:** `infra/scripts/smoke-dev-cell.sh`, `docs/operations/aws-dev-cell.md`
 - **Approach:**
   1. After the smoke release, the script fetches the invoice and checks with `jq` that the seller, buyer, one line, one 19 % tax total, and the gross are present and `contentComplete` is true.
-  2. Add a pre-deploy check for Phase C to the runbook: no unprocessed or dead-lettered `erp.sales-order.released.v1` message created before the Phase B deploy is left in the outbox.
+  2. Add the Phase B and Phase C worker hold to the runbook (KTD2): stop the worker before the Phase B image, leave pending `released.v1` messages unprocessed through the Phase C migrator, then start the worker and replay anything dead-lettered in the window.
   3. Add a runbook section on seller details: where to enter them, that releases return 409 without them, and that the smoke script sets them for the bootstrap Mandant.
 - **Test expectation:** none in the test suites. The deploy workflow's smoke step on the Phase C deploy is the test.
 - **Verification:** The Phase C deploy's smoke step passes with the invoice checks. The runbook names the outbox check and the seller-details section. The Phase A, B, and C pull request descriptions repeat their deploy notes.
@@ -566,7 +566,7 @@ flowchart TB
   - `openapi/v1.json`, `src/erp-web/src/api.generated.ts`
   - Tests: `tests/Erp.Domain.Tests/InvoiceTests.cs`, `tests/Erp.Integration.Tests/SalesOrderReadTests.cs`, `src/erp-web/src/App.test.tsx`
 - **Approach:**
-  1. Factor U5's grouping by rate and category and its per-rate rounding into one pure function in `Erp.Billing` that takes (tax code, line net) pairs. The invoice factory and the order response both call it, so the two cannot drift.
+  1. Factor U5's grouping by rate and category and its per-rate rounding into one pure function in `Erp.Billing`. It takes (tax code, line net) pairs and an intra-EU flag. Phase C always passes false. When the flag is true, the function maps every line to 0 % category K before grouping. The invoice factory and the order response both call it, so the two cannot drift.
   2. `SalesOrderResponse` gains `taxTotals` (rate, category, net, tax), `taxAmount`, and `grossAmount`. The API composes them from the order's frozen line tax codes, because `Erp.Sales` may not reference `Erp.Billing`. The order list keeps showing net only.
   3. The order summary in the sales workspace shows one "zzgl. … % USt" row per rate and the gross for a saved order. The capture draft keeps showing net only. Never re-add amounts on the client.
   4. Regenerate the OpenAPI document and the TS types.
@@ -613,7 +613,7 @@ flowchart TB
   - `src/erp-web/src/workspaces/SalesWorkspace.tsx`, `openapi/v1.json`, `src/erp-web/src/api.generated.ts`
   - Tests: `tests/Erp.Domain.Tests/InvoiceTests.cs`, `tests/Erp.Integration.Tests/InvoiceIssueTests.cs`, `src/erp-web/src/App.test.tsx`
 - **Approach:**
-  1. Order creation freezes the customer's intra-EU flag and USt-IdNr on the order (buyer columns from U4). A flagged order whose ship-to country is `DE` or not an EU member state returns 400 (R18).
+  1. Order creation freezes `IntraEuSupply` and `BuyerVatId` on their own `SalesOrder` columns. Do not reuse the U4 bill-to columns, which hold only the buyer name, number, and address. A flagged order whose ship-to country is `DE` or not an EU member state returns 400 (R18). The ship-to check uses the ISO country code stored on the address (`GR` for Greece). The U11 VAT-prefix check stays separate and still uses `EL` for a Greek USt-IdNr.
   2. Release of a flagged order returns 409 with `missingSellerFields: ["ustIdNr"]` while the Mandant has no USt-IdNr (R20). The seller block in the payload already carries it.
   3. The issuing factory gets an intra-EU input. Every line then maps to 0 % category K with exemption reason `VATEX-EU-IC`, regardless of its tax code. The invoice stores both USt-IdNrs and the note, and the factory rejects intra-EU input that lacks either USt-IdNr.
   4. The U13 order totals show one 0 % K row for a flagged order.
@@ -653,9 +653,9 @@ Each phase's pull request runs the full table. The Phase A and Phase B upgrade t
 ## Documentation / Operational Notes
 
 - Phase A: after the deploy, enter seller details for every Mandant in the AWS dev cell. Releases keep working, but Phase B refuses them without details. The smoke script sets them for the bootstrap Mandant.
-- Phase B: from this deploy on, releases for a Mandant without complete seller details return 409 (R4), and every release payload carries the seller block.
-- Phase C: before deploying, confirm the outbox holds no unprocessed or dead-lettered released.v1 message from before the Phase B deploy. Process or cancel it first (KTD2).
-- The deploy workflow updates the services first and runs the migrator afterwards. Every phase adds columns that its new code reads, so do not create or release orders in the cell until the workflow's migrator step has exited 0.
+- Phase B: stop the worker service before this image starts, and leave it stopped. Releases for a Mandant without complete seller details return 409 (R4), and every release payload carries the seller block. Do not let the previous worker allocate invoice numbers during this deploy.
+- Phase C: keep the worker stopped through the service rollout and the migrator. Do not process pending `released.v1` messages with either image while the invoice columns are absent. After the migrator exits 0, start the worker and replay any message dead-lettered in the window with `erp.replay_outbox`. Messages from before Phase B should already be gone, because the worker was stopped before Phase B.
+- The deploy workflow updates the services first and runs the migrator afterwards. Every phase adds columns that its new code reads, so do not create or release orders in the cell until the workflow's migrator step has exited 0. For Phase B and Phase C the worker is the exception: it stays stopped until the Phase C migrator exits 0.
 
 ---
 
@@ -675,3 +675,5 @@ Decisions made after the first version of this plan, recorded for review. "Confi
 | 2026-10-16 | Releasing a flagged order needs the Mandant's USt-IdNr, and a Steuernummer alone gets 409. §14a Abs. 3 UStG requires the seller's USt-IdNr on intra-EU invoices. | Agent | Pending review | R20, AE10 |
 | 2026-10-16 | No VIES check of USt-IdNrs (format and country prefix only), no Zusammenfassende Meldung, and no proof-of-transport handling. | Agent | Pending review | Scope Boundaries |
 | 2026-10-16 | The order capture draft keeps showing net only. Tax and gross appear once the order is saved. | Agent | Pending review | R19, U13, Scope Boundaries |
+| 2026-10-16 | Stop the worker before the Phase B image and start it only after the Phase C migrator exits 0, so no net-only invoice is numbered once seller details gate release. | Review of #111, accepted | Confirmed | KTD2, U10 |
+| 2026-10-16 | The shared tax-totals function takes the frozen intra-EU flag, and that flag lives on its own order columns. | Review of #111, accepted | Confirmed | R19, U12, U13 |

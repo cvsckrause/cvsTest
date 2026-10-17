@@ -440,7 +440,7 @@ Sync points: R-02 merges before any other `Program.cs` change. R-11 merges befor
 
 **Scope.**
 - Invoice lines copied from the order.
-- A tax code on the article (DE 19 %, 7 %, 0 % / reverse charge per D4) and net, tax, and gross totals per rate.
+- A tax code on the article (DE 19 %, 7 %, and 0 % Nullsteuersatz) and net, tax, and gross totals per rate. The 0 % intra-EU case is the customer-level §6a flag in the refined D4, not an article tax code and not §13b reverse charge.
 - Invoice date and delivery date.
 - Seller and buyer address snapshots, with a billing address from the customer's Billing role.
 - Invoices can't be changed after creation; corrections go through a credit note, later in E-3.
