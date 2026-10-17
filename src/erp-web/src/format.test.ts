@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { formatWhen, roundCents } from './format'
+import { formatIsoDate, formatWhen, roundCents } from './format'
 
 test('rounds cents half away from zero like the server', () => {
   expect(roundCents(0.125)).toBe(0.13)
@@ -16,6 +16,13 @@ test('formats a summer UTC instant in Europe/Berlin as dd.MM.yyyy / HH:mm:ss', (
 
 test('formats a winter UTC instant in Europe/Berlin (CET)', () => {
   expect(formatWhen('2026-01-15T10:00:00.000Z')).toBe('15.01.2026 / 11:00:00')
+})
+
+test('formats a calendar date without shifting it', () => {
+  expect(formatIsoDate('2026-12-31')).toBe('31.12.2026')
+  expect(formatIsoDate('2026-12-31T23:30:00Z')).toBe('31.12.2026')
+  expect(formatIsoDate(null)).toBe('—')
+  expect(formatIsoDate('not-a-date')).toBe('not-a-date')
 })
 
 test('returns the raw string when the value is not a valid date', () => {

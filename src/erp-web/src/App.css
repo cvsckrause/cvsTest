@@ -632,6 +632,59 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+.summary-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--navy);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.invoice-panel {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.invoice-head h2,
+.invoice-parties h3 {
+  margin: 0 0 6px;
+}
+
+.invoice-head p,
+.invoice-parties p,
+.legacy-note {
+  margin: 0;
+}
+
+.legacy-note {
+  font-weight: 700;
+}
+
+.invoice-parties {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.invoice-lines .grid-row {
+  grid-template-columns: 0.5fr 0.9fr 1.4fr 0.6fr 0.9fr 0.5fr 0.8fr;
+}
+
+.invoice-totals {
+  margin: 0;
+}
+
+.invoice-totals div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 0;
+}
+
 .summary .total {
   margin-top: 8px;
   padding-top: 16px;
@@ -848,6 +901,10 @@ kbd {
 
   .grid-row {
     min-width: 680px;
+  }
+
+  .invoice-parties {
+    grid-template-columns: 1fr;
   }
 }
 

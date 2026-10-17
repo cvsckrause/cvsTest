@@ -1,4 +1,5 @@
-import { euro, formatWhen } from '../format'
+import type { Invoice } from '../api'
+import { euro, formatIsoDate, formatWhen, qty } from '../format'
 import type { SalesModel } from './sales-model'
 
 export function SalesWorkspace({ model }: { model: SalesModel }) {
@@ -132,6 +133,10 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
 
       <section className="workspace">
         <div className="document">
+          {step === 'invoice' && invoices[0] ? (
+            <InvoicePanel invoice={invoices[0]} />
+          ) : (
+          <>
           <div className="document-head document-head-order">
             <label>
               Auftragsnummer
@@ -236,6 +241,8 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
             </label>
             <button className="secondary" type="submit" disabled={Boolean(order)}>Position hinzufügen</button>
           </form>
+          </>
+          )}
         </div>
 
         <aside className="summary">
@@ -247,6 +254,15 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
             <div><dt>Warenwert</dt><dd>{euro(order?.netAmount ?? netAmount)}</dd></div>
             <div><dt>Rabatt</dt><dd>0,00 €</dd></div>
             <div className="total"><dt>Nettobetrag</dt><dd>{euro(order?.netAmount ?? netAmount)}</dd></div>
+            {order?.taxTotals?.map((total) => (
+              <div key={`${total.category}-${total.rate}`}>
+                <dt>zzgl. {formatRate(total.rate)} % USt auf {euro(total.netAmount)}</dt>
+                <dd>{euro(total.taxAmount)}</dd>
+              </div>
+            ))}
+            {order?.taxTotals && order.taxTotals.length > 0 && (
+              <div className="total"><dt>Brutto</dt><dd>{euro(order.grossAmount)}</dd></div>
+            )}
           </dl>
           {(step === 'deliver' || step === 'invoice' || order?.status === 'Released') && (
             <dl className="document-refs">
@@ -256,7 +272,15 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
               </div>
               <div>
                 <dt>Rechnung</dt>
-                <dd>{invoices[0]?.number ?? (documentsWaiting ? 'wird erzeugt …' : '—')}</dd>
+                <dd>
+                  {invoices[0] ? (
+                    <button className="summary-link" type="button" onClick={() => goTo('invoice')}>
+                      {invoices[0].number}
+                    </button>
+                  ) : (
+                    documentsWaiting ? 'wird erzeugt …' : '—'
+                  )}
+                </dd>
               </div>
             </dl>
           )}
@@ -310,6 +334,85 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
       </section>
     </>
   )
+}
+
+function InvoicePanel({ invoice }: { invoice: Invoice }) {
+  if (!invoice.contentComplete) {
+    return (
+      <div className="invoice-panel" role="region" aria-label="Rechnung">
+        <p className="legacy-note">Altbeleg – Inhalt unvollständig</p>
+        <p>{invoice.number}</p>
+        <p>{euro(invoice.netAmount)}</p>
+      </div>
+    )
+  }
+
+  const seller = invoice.seller
+  const buyer = invoice.buyer
+  const taxId = seller?.ustIdNr || seller?.steuernummer
+
+  return (
+    <div className="invoice-panel" role="region" aria-label="Rechnung">
+      <header className="invoice-head">
+        <h2>Rechnung {invoice.number}</h2>
+        <p>Rechnungsdatum {formatIsoDate(invoice.invoiceDate)}</p>
+        <p>Leistungsdatum {formatIsoDate(invoice.deliveryDate)}</p>
+      </header>
+      <div className="invoice-parties">
+        <div>
+          <h3>Verkäufer</h3>
+          <p>{seller?.name}</p>
+          <p>{seller?.street}</p>
+          {seller?.additionalLine && <p>{seller.additionalLine}</p>}
+          <p>{seller?.postalCode} {seller?.city}</p>
+          {taxId && <p>{seller?.ustIdNr ? 'USt-IdNr' : 'Steuernummer'} {taxId}</p>}
+        </div>
+        <div>
+          <h3>Käufer</h3>
+          <p>{buyer?.name}</p>
+          {buyer?.number && <p>{buyer.number}</p>}
+          <p>{buyer?.street}</p>
+          {buyer?.additionalLine && <p>{buyer.additionalLine}</p>}
+          <p>{buyer?.postalCode} {buyer?.city}</p>
+        </div>
+      </div>
+      <div className="line-grid invoice-lines" role="table" aria-label="Rechnungspositionen">
+        <div className="grid-row grid-head" role="row">
+          <span>Pos.</span>
+          <span>Artikel</span>
+          <span>Bezeichnung</span>
+          <span>Menge</span>
+          <span>Einzelpreis</span>
+          <span>USt</span>
+          <span>Netto</span>
+        </div>
+        {invoice.lines.map((line) => (
+          <div className="grid-row" role="row" key={line.position}>
+            <span>{line.position}</span>
+            <span>{line.sku}</span>
+            <span>{line.description}</span>
+            <span>{qty(line.quantity)}</span>
+            <span>{euro(line.unitPrice)}</span>
+            <span>{formatRate(line.rate)} %</span>
+            <span>{euro(line.netAmount)}</span>
+          </div>
+        ))}
+      </div>
+      <dl className="invoice-totals">
+        {invoice.taxTotals.map((total) => (
+          <div key={`${total.category}-${total.rate}`}>
+            <dt>zzgl. {formatRate(total.rate)} % USt auf {euro(total.netAmount)}</dt>
+            <dd>{euro(total.taxAmount)}</dd>
+          </div>
+        ))}
+        <div className="total"><dt>Brutto</dt><dd>{euro(invoice.grossAmount ?? invoice.netAmount)}</dd></div>
+      </dl>
+    </div>
+  )
+}
+
+function formatRate(rate: number) {
+  return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(rate)
 }
 
 function statusLabel(status?: string) {

@@ -307,6 +307,7 @@ test('rounds each draft line to cents before summing the order net', async () =>
   expect(firstLine.querySelector('strong:last-of-type')).toHaveTextContent('0,13 €')
   const warenwert = screen.getByText('Warenwert').parentElement as HTMLElement
   expect(within(warenwert).getByText('0,26 €')).toBeInTheDocument()
+  expect(screen.queryByText(/zzgl\./)).not.toBeInTheDocument()
 })
 
 test('shows the sales order list and opens capture from it', async () => {
@@ -845,6 +846,121 @@ test('does not reopen the previous Mandant Stamm document after a switch', async
     String(requestUrl).includes('/articles/article-1')
     && new Headers(requestInit?.headers).get('X-Tenant-Id') === tenantB)
   expect(articleReads).toHaveLength(0)
+})
+
+const ae3Order = {
+  ...salesOrder,
+  netAmount: 1636.97,
+  taxAmount: 306.35,
+  grossAmount: 1943.32,
+  taxTotals: [
+    { rate: 19, category: 'S', netAmount: 1598, taxAmount: 303.62 },
+    { rate: 7, category: 'S', netAmount: 38.97, taxAmount: 2.73 },
+  ],
+  lines: [
+    { articleId: 'article-1', sku: 'BIKE-001', description: 'Cityrad', taxCode: 'Standard19', quantity: 2, unitPrice: 799, netAmount: 1598 },
+    { articleId: 'article-2', sku: 'LOCK-001', description: 'Schloss', taxCode: 'Reduced7', quantity: 3, unitPrice: 12.99, netAmount: 38.97 },
+  ],
+}
+
+const ae3Invoice = {
+  id: 'invoice-ae3',
+  salesOrderId: 'order-1',
+  number: 'R-100',
+  netAmount: 1636.97,
+  taxAmount: 306.35,
+  grossAmount: 1943.32,
+  currency: 'EUR',
+  contentComplete: true,
+  invoiceDate: '2026-10-16',
+  deliveryDate: '2026-10-16',
+  seller: {
+    name: 'A Handels GmbH',
+    street: 'Alsterweg 1',
+    postalCode: '20095',
+    city: 'Hamburg',
+    countryCode: 'DE',
+    additionalLine: null,
+    steuernummer: '22/111/11111',
+    ustIdNr: 'DE111111111',
+  },
+  buyer: {
+    name: 'Nordrad GmbH',
+    number: '10000',
+    street: 'Rechnung 2',
+    postalCode: '20095',
+    city: 'Hamburg',
+    countryCode: 'DE',
+    additionalLine: null,
+  },
+  lines: [
+    { position: 1, sku: 'BIKE-001', description: 'Cityrad', quantity: 2, unitPrice: 799, netAmount: 1598, rate: 19, category: 'S', taxCode: 'Standard19' },
+    { position: 2, sku: 'LOCK-001', description: 'Schloss', quantity: 3, unitPrice: 12.99, netAmount: 38.97, rate: 7, category: 'S', taxCode: 'Reduced7' },
+  ],
+  taxTotals: ae3Order.taxTotals,
+  createdAt: '2026-10-16T10:00:00.000Z',
+}
+
+test('shows the saved order tax rows and the complete invoice', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url.includes('/sales-orders/') && url.includes('/invoices')) return jsonResponse([ae3Invoice])
+    if (url.includes('/sales-orders/') && !url.includes('/deliveries')) return jsonResponse(ae3Order)
+    return route(url)
+  }))
+
+  render(<App />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Öffnen' }))
+  expect(await screen.findByText(/zzgl\. 19 % USt/)).toBeInTheDocument()
+  expect(screen.getByText(/zzgl\. 7 % USt/)).toBeInTheDocument()
+  expect(screen.getAllByText(/1\.943,32/).length).toBeGreaterThan(0)
+
+  fireEvent.click(screen.getByRole('button', { name: 'R-100' }))
+  const panel = await screen.findByRole('region', { name: 'Rechnung' })
+  expect(within(panel).getByText('Cityrad')).toBeInTheDocument()
+  expect(within(panel).getByText('Schloss')).toBeInTheDocument()
+  expect(within(panel).getByText(/zzgl\. 19 % USt/)).toBeInTheDocument()
+  expect(within(panel).getByText(/zzgl\. 7 % USt/)).toBeInTheDocument()
+  expect(within(panel).getByText(/1\.943,32/)).toBeInTheDocument()
+  expect(within(panel).getByText('A Handels GmbH')).toBeInTheDocument()
+  expect(within(panel).getByText('Nordrad GmbH')).toBeInTheDocument()
+  expect(within(panel).getByText('USt-IdNr DE111111111')).toBeInTheDocument()
+  expect(within(panel).getAllByText(/16\.10\.2026/).length).toBe(2)
+})
+
+test('shows only the number and net for a legacy invoice', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url.includes('/invoices')) {
+      return jsonResponse([{ ...invoice, contentComplete: false, lines: [], taxTotals: [], seller: null, buyer: null }])
+    }
+    return route(url)
+  }))
+
+  render(<App />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Öffnen' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'R-1' }))
+  const panel = await screen.findByRole('region', { name: 'Rechnung' })
+  expect(within(panel).getByText('Altbeleg – Inhalt unvollständig')).toBeInTheDocument()
+  expect(within(panel).getByText('R-1')).toBeInTheDocument()
+  expect(within(panel).queryByRole('table', { name: 'Rechnungspositionen' })).not.toBeInTheDocument()
+})
+
+test('keeps the pending invoice text while the worker has not created it', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url.includes('/invoices')) return jsonResponse([])
+    if (url.includes('/deliveries')) return jsonResponse([])
+    return route(url)
+  }))
+
+  render(<App />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Öffnen' }))
+  expect(await screen.findAllByText('wird erzeugt …')).toHaveLength(2)
+  fireEvent.click(screen.getByRole('button', { name: /Rechnen/ }))
+  expect(screen.getAllByText('wird erzeugt …')).toHaveLength(2)
+  expect(screen.queryByText('Altbeleg – Inhalt unvollständig')).not.toBeInTheDocument()
+  expect(screen.queryByRole('table', { name: 'Rechnungspositionen' })).not.toBeInTheDocument()
 })
 
 test('puts the open article into the URL', async () => {
