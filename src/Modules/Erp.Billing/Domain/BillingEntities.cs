@@ -144,8 +144,8 @@ public sealed class Invoice : ITenantEntity
     public Guid SalesOrderId { get; private set; }
     public string Number { get; private set; } = string.Empty;
     public decimal NetAmount { get; private set; }
-    public decimal TaxAmount { get; private set; }
-    public decimal GrossAmount { get; private set; }
+    public decimal? TaxAmount { get; private set; }
+    public decimal? GrossAmount { get; private set; }
     public DateOnly? InvoiceDate { get; private set; }
     public DateOnly? DeliveryDate { get; private set; }
     public bool ContentComplete { get; private set; }

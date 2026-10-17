@@ -12,6 +12,7 @@ public sealed class InvoiceContentUpgradeTests(PostgresFixture fixture)
 {
     private const string OrderLineMigration = "20261016193922_FreezeOrderLineContent";
     private const string BillToMigration = "20261016203055_FreezeOrderBillTo";
+    private const string InvoiceContentMigration = "20261017105417_AddInvoiceContent";
     private const string OwnerRole = "erp_invoice_content_owner";
 
     private static readonly Guid TenantX = Guid.Parse("0000000a-0000-0000-0000-000000000016");
@@ -64,6 +65,79 @@ public sealed class InvoiceContentUpgradeTests(PostgresFixture fixture)
         Assert.Equal((true, true, true), await probe.IsolationAsync(new TenantTable("erp", "customers")));
     }
 
+    [Fact]
+    public async Task Legacy_invoices_keep_number_and_net_and_stay_incomplete()
+    {
+        await using var scratch = await ScratchDatabase.CreateAsync(fixture.AdminConnectionString, OwnerRole);
+        await MigrateAsAdminAsync(scratch, MigrationBefore(InvoiceContentMigration));
+        var invoiceX = await SeedLegacyInvoiceAsync(scratch, TenantX, "R-1001", 12.50m);
+        var invoiceY = await SeedLegacyInvoiceAsync(scratch, TenantY, "R-2002", 7.00m);
+        await HandOverAsync(scratch, "invoices");
+
+        await MigrateAsOwnerAsync(scratch, InvoiceContentMigration);
+
+        Assert.Equal(("R-1001", 12.50m, false), await LegacyInvoiceAsync(scratch, invoiceX));
+        Assert.Equal(("R-2002", 7.00m, false), await LegacyInvoiceAsync(scratch, invoiceY));
+        var probe = new DatabaseProbe(scratch.AdminConnectionString, scratch.AdminConnectionString);
+        Assert.Equal((true, true, true), await probe.IsolationAsync(new TenantTable("erp", "invoice_lines")));
+        Assert.Equal((true, true, true), await probe.IsolationAsync(new TenantTable("erp", "invoice_tax_totals")));
+    }
+
+    [Fact]
+    public async Task App_role_can_select_invoice_content_but_not_change_it()
+    {
+        Assert.Equal("ok", await SqlStateAsync(fixture.AppConnectionString, fixture.TenantA, """select count(*) from erp.invoices"""));
+        Assert.Equal("ok", await SqlStateAsync(fixture.AppConnectionString, fixture.TenantA, """select count(*) from erp.invoice_lines"""));
+        Assert.Equal("ok", await SqlStateAsync(fixture.AppConnectionString, fixture.TenantA, """select count(*) from erp.invoice_tax_totals"""));
+
+        foreach (var table in new[] { "invoices", "invoice_lines", "invoice_tax_totals" })
+        {
+            Assert.Equal("42501", await SqlStateAsync(fixture.AppConnectionString, fixture.TenantA, InsertSql(table)));
+            Assert.Equal("42501", await SqlStateAsync(fixture.AppConnectionString, fixture.TenantA, $"update erp.{table} set \"TenantId\" = \"TenantId\""));
+            Assert.Equal("42501", await SqlStateAsync(fixture.AppConnectionString, fixture.TenantA, $"delete from erp.{table}"));
+        }
+    }
+
+    [Fact]
+    public async Task Worker_can_insert_invoice_content_but_not_update_or_delete_it()
+    {
+        var invoiceId = Guid.NewGuid();
+        Assert.Equal("ok", await SqlStateAsync(fixture.WorkerConnectionString, fixture.TenantA, """select count(*) from erp.invoices"""));
+        Assert.Equal("ok", await SqlStateAsync(
+            fixture.WorkerConnectionString,
+            fixture.TenantA,
+            $"""
+            insert into erp.invoices ("Id", "TenantId", "SalesOrderId", "Number", "NetAmount", "CreatedAt")
+            values ('{invoiceId}', '{fixture.TenantA}', '{Guid.NewGuid()}', 'R-GRANT', 1, now())
+            """));
+        Assert.Equal("ok", await SqlStateAsync(fixture.WorkerConnectionString, fixture.TenantA, InsertLineSql(invoiceId, fixture.TenantA)));
+        Assert.Equal("ok", await SqlStateAsync(fixture.WorkerConnectionString, fixture.TenantA, InsertTaxSql(invoiceId, fixture.TenantA)));
+        Assert.Equal("42501", await SqlStateAsync(
+            fixture.WorkerConnectionString, fixture.TenantA, $"update erp.invoices set \"NetAmount\" = \"NetAmount\" where \"Id\" = '{invoiceId}'"));
+        Assert.Equal("42501", await SqlStateAsync(
+            fixture.WorkerConnectionString, fixture.TenantA, $"delete from erp.invoice_lines where \"InvoiceId\" = '{invoiceId}'"));
+
+        await ExecuteAsync(fixture.AdminConnectionString, $"""
+            delete from erp.invoice_tax_totals where "InvoiceId" = '{invoiceId}';
+            delete from erp.invoice_lines where "InvoiceId" = '{invoiceId}';
+            delete from erp.invoices where "Id" = '{invoiceId}';
+            """);
+    }
+
+    [Fact]
+    public async Task Other_tenant_cannot_read_invoice_lines_or_tax_totals()
+    {
+        var lines = await CountForTenantAsync(fixture.AppConnectionString, fixture.TenantB, "invoice_lines", fixture.TenantA);
+        var totals = await CountForTenantAsync(fixture.AppConnectionString, fixture.TenantB, "invoice_tax_totals", fixture.TenantA);
+        var storedLines = await CountForTenantAsync(fixture.AdminConnectionString, fixture.TenantA, "invoice_lines", fixture.TenantA);
+        var storedTotals = await CountForTenantAsync(fixture.AdminConnectionString, fixture.TenantA, "invoice_tax_totals", fixture.TenantA);
+
+        Assert.True(storedLines > 0);
+        Assert.True(storedTotals > 0);
+        Assert.Equal(0, lines);
+        Assert.Equal(0, totals);
+    }
+
     private static async Task<Guid> SeedOrderWithCustomerAsync(
         ScratchDatabase scratch, Guid tenantId, string customerName, string customerNumber, string? additionalLine)
     {
@@ -111,6 +185,93 @@ public sealed class InvoiceContentUpgradeTests(PostgresFixture fixture)
             reader.GetString(6),
             reader.GetString(7),
             reader.IsDBNull(8) ? null : reader.GetString(8));
+    }
+
+    private static async Task<Guid> SeedLegacyInvoiceAsync(
+        ScratchDatabase scratch, Guid tenantId, string number, decimal netAmount)
+    {
+        var invoiceId = Guid.NewGuid();
+        await ExecuteAsync(scratch, """
+            insert into erp.invoices ("Id", "TenantId", "SalesOrderId", "Number", "NetAmount", "CreatedAt")
+            values (@id, @tenant, gen_random_uuid(), @number, @net, now())
+            """,
+            ("id", invoiceId), ("tenant", tenantId), ("number", number), ("net", netAmount));
+        return invoiceId;
+    }
+
+    private static async Task<(string Number, decimal NetAmount, bool ContentComplete)> LegacyInvoiceAsync(
+        ScratchDatabase scratch, Guid invoiceId)
+    {
+        await using var connection = new NpgsqlConnection(scratch.AdminConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """select "Number", "NetAmount", "ContentComplete" from erp.invoices where "Id" = @id""", connection);
+        command.Parameters.AddWithValue("id", invoiceId);
+        await using var reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        return (reader.GetString(0), reader.GetDecimal(1), reader.GetBoolean(2));
+    }
+
+    private static async Task<string> SqlStateAsync(string connectionString, Guid tenantId, string sql)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var tenant = new NpgsqlCommand("select set_config('app.tenant_id', @tenant, false)", connection);
+        tenant.Parameters.AddWithValue("tenant", tenantId.ToString());
+        await tenant.ExecuteNonQueryAsync();
+        try
+        {
+            await using var command = new NpgsqlCommand(sql, connection);
+            await command.ExecuteNonQueryAsync();
+            return "ok";
+        }
+        catch (PostgresException exception)
+        {
+            return exception.SqlState;
+        }
+    }
+
+    private static async Task<int> CountForTenantAsync(string connectionString, Guid actingTenant, string table, Guid ownerTenant)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var tenant = new NpgsqlCommand("select set_config('app.tenant_id', @tenant, false)", connection);
+        tenant.Parameters.AddWithValue("tenant", actingTenant.ToString());
+        await tenant.ExecuteNonQueryAsync();
+        await using var command = new NpgsqlCommand(
+            $"select count(*)::int from erp.{table} where \"TenantId\" = @owner", connection);
+        command.Parameters.AddWithValue("owner", ownerTenant);
+        return (int)(await command.ExecuteScalarAsync() ?? 0);
+    }
+
+    private static string InsertSql(string table) => table switch
+    {
+        "invoices" => """
+            insert into erp.invoices ("Id", "TenantId", "SalesOrderId", "Number", "NetAmount", "CreatedAt")
+            values (gen_random_uuid(), 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', gen_random_uuid(), 'R-APP', 1, now())
+            """,
+        "invoice_lines" => InsertLineSql(Guid.NewGuid(), Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")),
+        "invoice_tax_totals" => InsertTaxSql(Guid.NewGuid(), Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")),
+        _ => throw new ArgumentOutOfRangeException(nameof(table)),
+    };
+
+    private static string InsertLineSql(Guid invoiceId, Guid tenantId) => $"""
+        insert into erp.invoice_lines (
+            "Id", "TenantId", "InvoiceId", "Position", "Sku", "Description", "Quantity", "UnitPrice", "NetAmount", "Rate", "Category", "TaxCode")
+        values (gen_random_uuid(), '{tenantId}', '{invoiceId}', 1, 'SKU', 'Probe', 1, 1, 1, 19, 'S', 'Standard19')
+        """;
+
+    private static string InsertTaxSql(Guid invoiceId, Guid tenantId) => $"""
+        insert into erp.invoice_tax_totals ("Id", "TenantId", "InvoiceId", "Rate", "Category", "NetAmount", "TaxAmount")
+        values (gen_random_uuid(), '{tenantId}', '{invoiceId}', 19, 'S', 1, 0.19)
+        """;
+
+    private static async Task ExecuteAsync(string connectionString, string sql)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
+        await command.ExecuteNonQueryAsync();
     }
 
     private static async Task<Guid> SeedOrderLineAsync(ScratchDatabase scratch, Guid tenantId, string articleName)

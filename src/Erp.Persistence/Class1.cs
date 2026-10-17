@@ -177,7 +177,57 @@ public sealed class ErpDbContext(
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Number).HasMaxLength(40);
             entity.Property(x => x.NetAmount).HasPrecision(18, 4);
+            entity.Property(x => x.TaxAmount).HasPrecision(18, 4);
+            entity.Property(x => x.GrossAmount).HasPrecision(18, 4);
+            entity.Property(x => x.ContentComplete).HasDefaultValue(false);
+            entity.Property(x => x.SellerName).HasMaxLength(Mandant.FirmennameMaxLength);
+            entity.Property(x => x.SellerStreet).HasMaxLength(Mandant.StreetMaxLength);
+            entity.Property(x => x.SellerPostalCode).HasMaxLength(Mandant.PostalCodeMaxLength);
+            entity.Property(x => x.SellerCity).HasMaxLength(Mandant.CityMaxLength);
+            entity.Property(x => x.SellerCountryCode).HasMaxLength(2);
+            entity.Property(x => x.SellerAdditionalLine).HasMaxLength(Mandant.StreetMaxLength);
+            entity.Property(x => x.SellerSteuernummer).HasMaxLength(Mandant.SteuernummerMaxLength);
+            entity.Property(x => x.SellerUstIdNr).HasMaxLength(Mandant.UstIdNrMaxLength);
+            entity.Property(x => x.BuyerName).HasMaxLength(240);
+            entity.Property(x => x.BuyerNumber).HasMaxLength(40);
+            entity.Property(x => x.BuyerStreet).HasMaxLength(Mandant.StreetMaxLength);
+            entity.Property(x => x.BuyerPostalCode).HasMaxLength(Mandant.PostalCodeMaxLength);
+            entity.Property(x => x.BuyerCity).HasMaxLength(Mandant.CityMaxLength);
+            entity.Property(x => x.BuyerCountryCode).HasMaxLength(2);
+            entity.Property(x => x.BuyerAdditionalLine).HasMaxLength(Mandant.StreetMaxLength);
             entity.HasIndex(x => new { x.TenantId, x.Number }).IsUnique();
+            entity.HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.InvoiceId);
+            entity.Navigation(x => x.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+            entity.HasMany(x => x.TaxTotals).WithOne().HasForeignKey(x => x.InvoiceId);
+            entity.Navigation(x => x.TaxTotals).UsePropertyAccessMode(PropertyAccessMode.Field);
+            entity.HasQueryFilter(x => x.TenantId == tenantContext.TenantId);
+        });
+
+        modelBuilder.Entity<InvoiceLine>(entity =>
+        {
+            entity.ToTable("invoice_lines");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Sku).HasMaxLength(80);
+            entity.Property(x => x.Description).HasMaxLength(240);
+            entity.Property(x => x.Quantity).HasPrecision(18, 4);
+            entity.Property(x => x.UnitPrice).HasPrecision(18, 4);
+            entity.Property(x => x.NetAmount).HasPrecision(18, 4);
+            entity.Property(x => x.Rate).HasPrecision(18, 4);
+            entity.Property(x => x.Category).HasMaxLength(8);
+            entity.Property(x => x.TaxCode).HasConversion<string>().HasMaxLength(20);
+            entity.HasIndex(x => new { x.TenantId, x.InvoiceId });
+            entity.HasQueryFilter(x => x.TenantId == tenantContext.TenantId);
+        });
+
+        modelBuilder.Entity<InvoiceTaxTotal>(entity =>
+        {
+            entity.ToTable("invoice_tax_totals");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Rate).HasPrecision(18, 4);
+            entity.Property(x => x.Category).HasMaxLength(8);
+            entity.Property(x => x.NetAmount).HasPrecision(18, 4);
+            entity.Property(x => x.TaxAmount).HasPrecision(18, 4);
+            entity.HasIndex(x => new { x.TenantId, x.InvoiceId });
             entity.HasQueryFilter(x => x.TenantId == tenantContext.TenantId);
         });
 
