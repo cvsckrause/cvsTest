@@ -74,6 +74,8 @@ public sealed class PostgresFixture : IAsyncLifetime
         SeedA = await SeedTenantAsync(TenantA, "A");
         SeedB = await SeedTenantAsync(TenantB, "B");
         await OutboxProcessor.ProcessOnceAsync(WorkerConnectionString);
+        // The worker still stores a net-only invoice. The isolation probe needs one row in each new table.
+        await SeedInvoiceContentProbesAsync(adminConnectionString);
     }
 
     internal ApiSession OpenSession(Guid tenantId) =>
@@ -175,6 +177,32 @@ public sealed class PostgresFixture : IAsyncLifetime
         await api.PostOkAsync($"/api/v1/sales-orders/{order.Id}/release", new { }, $"{label}-release");
 
         return new TenantGraph(customer.Id, address.Id, article.Id, order.Id, receipt.Id);
+    }
+
+    private static async Task SeedInvoiceContentProbesAsync(string adminConnectionString)
+    {
+        await using var connection = new NpgsqlConnection(adminConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            insert into erp.invoice_lines (
+                "Id", "TenantId", "InvoiceId", "Position", "Sku", "Description",
+                "Quantity", "UnitPrice", "NetAmount", "Rate", "Category", "TaxCode")
+            select gen_random_uuid(), invoice."TenantId", invoice."Id", 1, 'PROBE', 'Probe line',
+                1, 1, 1, 19, 'S', 'Standard19'
+            from erp.invoices invoice
+            where not exists (
+                select 1 from erp.invoice_lines line where line."InvoiceId" = invoice."Id");
+
+            insert into erp.invoice_tax_totals (
+                "Id", "TenantId", "InvoiceId", "Rate", "Category", "NetAmount", "TaxAmount")
+            select gen_random_uuid(), invoice."TenantId", invoice."Id", 19, 'S', invoice."NetAmount", 0
+            from erp.invoices invoice
+            where not exists (
+                select 1 from erp.invoice_tax_totals total where total."InvoiceId" = invoice."Id");
+            """,
+            connection);
+        await command.ExecuteNonQueryAsync();
     }
 
     private async Task SeedMembershipsAsync(string adminConnectionString)
