@@ -201,6 +201,19 @@ for _ in $(seq 1 36); do
   delivery_number="$(jq -r '.[0].number // empty' <<<"${deliveries}")"
   invoice_number="$(jq -r '.[0].number // empty' <<<"${invoices}")"
   if [[ "${delivery_number}" == LS-* && "${invoice_number}" == R-* ]]; then
+    invoice_id="$(jq -er '.[0].id' <<<"${invoices}")"
+    invoice="$(request GET "/api/v1/invoices/${invoice_id}")"
+    if ! jq -e '
+      .contentComplete == true
+      and (.seller.name | length) > 0
+      and (.buyer.name | length) > 0
+      and (.lines | length) >= 1
+      and ([.taxTotals[] | select(.rate == 19 and .category == "S")] | length) >= 1
+      and .grossAmount != null
+    ' <<<"${invoice}" >/dev/null; then
+      echo "Invoice content is incomplete: ${invoice}" >&2
+      exit 1
+    fi
     echo "Smoke passed. Delivery ${delivery_number}, invoice ${invoice_number}."
     exit 0
   fi
