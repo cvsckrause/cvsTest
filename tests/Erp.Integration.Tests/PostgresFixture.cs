@@ -145,6 +145,11 @@ public sealed class PostgresFixture : IAsyncLifetime
             countryCode = "DE"
         });
         await api.PostOkAsync($"/api/v1/customers/{customer.Id}/addresses", new { addressId = address.Id, role = "Shipping" });
+        if (tenantId == TenantA)
+        {
+            await api.PostOkAsync($"/api/v1/customers/{customer.Id}/addresses", new { addressId = address.Id, role = "Billing" });
+        }
+
         var article = await api.PostOkAsync("/api/v1/articles", new
         {
             sku = $"{label}-SKU",

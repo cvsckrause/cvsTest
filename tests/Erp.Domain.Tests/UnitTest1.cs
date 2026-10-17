@@ -15,10 +15,12 @@ public sealed class TradingFlowTests
     private static AddressSnapshot SampleShipTo =>
         new("Nordrad GmbH", "Hafenstraße 12", "20095", "Hamburg", "DE", null);
 
+    private static BillToSnapshot SampleBillTo => new("Nordrad GmbH", "10000", null, SampleShipTo);
+
     [Fact]
     public void Releasing_order_emits_stable_event_and_locks_order()
     {
-        var order = SalesOrder.Create(TenantId, CustomerId, "SO-10001", ShipToAddressId, SampleShipTo);
+        var order = SalesOrder.Create(TenantId, CustomerId, "SO-10001", ShipToAddressId, SampleShipTo, SampleBillTo);
         order.AddLine(ArticleId, "BIKE-001", "Cityrad", TaxCode.Standard19, 2, 799m);
 
         var released = order.Release();
@@ -35,7 +37,7 @@ public sealed class TradingFlowTests
     [Fact]
     public void Releasing_order_twice_is_rejected()
     {
-        var order = SalesOrder.Create(TenantId, CustomerId, "SO-10002", ShipToAddressId, SampleShipTo);
+        var order = SalesOrder.Create(TenantId, CustomerId, "SO-10002", ShipToAddressId, SampleShipTo, SampleBillTo);
         order.AddLine(ArticleId, "BIKE-001", "Cityrad", TaxCode.Standard19, 1, 799m);
         order.Release();
 
@@ -46,16 +48,16 @@ public sealed class TradingFlowTests
     public void Sales_order_requires_ship_to_snapshot()
     {
         Assert.Throws<ArgumentException>(() =>
-            SalesOrder.Create(TenantId, CustomerId, "SO-10003", Guid.Empty, SampleShipTo));
+            SalesOrder.Create(TenantId, CustomerId, "SO-10003", Guid.Empty, SampleShipTo, SampleBillTo));
         Assert.Throws<ArgumentException>(() =>
-            SalesOrder.Create(TenantId, CustomerId, "SO-10004", ShipToAddressId, SampleShipTo with { Name = " " }));
+            SalesOrder.Create(TenantId, CustomerId, "SO-10004", ShipToAddressId, SampleShipTo with { Name = " " }, SampleBillTo));
     }
 
     [Fact]
     public void Order_snapshot_is_independent_of_later_address_edits()
     {
         var address = Address.Create(TenantId, "Nordrad GmbH", "Hafenstraße 12", "20095", "Hamburg");
-        var order = SalesOrder.Create(TenantId, CustomerId, "SO-10005", address.Id, address.ToSnapshot());
+        var order = SalesOrder.Create(TenantId, CustomerId, "SO-10005", address.Id, address.ToSnapshot(), SampleBillTo);
         order.AddLine(ArticleId, "BIKE-001", "Cityrad", TaxCode.Standard19, 1, 799m);
 
         address.Update("Nordrad GmbH", "Neue Straße 1", "20099", "Hamburg", "DE", null);

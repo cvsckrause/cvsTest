@@ -31,10 +31,12 @@ const baseUrl = import.meta.env.VITE_API_URL ?? '/api/v1'
 
 export class ApiError extends Error {
   readonly status: number
+  readonly missingSellerFields: string[]
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, missingSellerFields: string[] = []) {
     super(message)
     this.status = status
+    this.missingSellerFields = missingSellerFields
   }
 }
 
@@ -80,9 +82,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error('API nicht erreichbar. Seite neu laden oder prüfen, ob die ERP-API läuft.')
   }
 
-  const payload = await readJson<{ detail?: string; error?: string } & T>(response, path, init?.method)
+  const payload = await readJson<{ detail?: string; error?: string; missingSellerFields?: string[] } & T>(
+    response,
+    path,
+    init?.method,
+  )
   if (!response.ok) {
-    throw new ApiError(payload?.detail ?? payload?.error ?? failureMessage(response.status, init?.method), response.status)
+    throw new ApiError(
+      payload?.detail ?? payload?.error ?? failureMessage(response.status, init?.method),
+      response.status,
+      payload?.missingSellerFields ?? [],
+    )
   }
 
   return payload as T
@@ -120,10 +130,7 @@ export const erpApi = {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
-  customerAddresses: (customerId: string, role?: string) =>
-    request<CustomerAddress[]>(
-      `/customers/${customerId}/addresses${role ? `?role=${encodeURIComponent(role)}` : ''}`,
-    ),
+  customerAddresses: (customerId: string) => request<CustomerAddress[]>(`/customers/${customerId}/addresses`),
   linkCustomerAddress: (customerId: string, addressId: string, role: string) =>
     request<CustomerAddress>(`/customers/${customerId}/addresses`, {
       method: 'POST',
@@ -161,6 +168,7 @@ salesOrders: (status?: string, after?: string) => {
     orderNumber: string,
     lines: OrderLine[],
     warehouseCode = 'MAIN',
+    billToAddressId: string | null = null,
   ) =>
     request<SalesOrder>('/sales-orders', {
       method: 'POST',
@@ -168,6 +176,7 @@ salesOrders: (status?: string, after?: string) => {
       body: JSON.stringify({
         customerId,
         shipToAddressId,
+        billToAddressId,
         orderNumber: orderNumber.trim() ? orderNumber.trim() : null,
         warehouseCode,
         lines: lines.map((line) => ({ articleId: line.articleId, quantity: line.quantity })),

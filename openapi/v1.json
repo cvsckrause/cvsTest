@@ -138,6 +138,33 @@
         ],
         "type": "object"
       },
+      "BillToSnapshot": {
+        "properties": {
+          "address": {
+            "$ref": "#/components/schemas/AddressSnapshot"
+          },
+          "addressId": {
+            "format": "uuid",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "buyerName": {
+            "type": "string"
+          },
+          "buyerNumber": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "buyerName",
+          "buyerNumber",
+          "addressId",
+          "address"
+        ],
+        "type": "object"
+      },
       "CreateAddressRequest": {
         "properties": {
           "additionalLine": {
@@ -259,6 +286,13 @@
       },
       "CreateSalesOrderRequest": {
         "properties": {
+          "billToAddressId": {
+            "format": "uuid",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "customerId": {
             "format": "uuid",
             "type": "string"
@@ -541,6 +575,24 @@
         ],
         "type": "object"
       },
+      "ReleaseConflictResponse": {
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "missingSellerFields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "error",
+          "missingSellerFields"
+        ],
+        "type": "object"
+      },
       "SalesOrderLineResponse": {
         "properties": {
           "articleId": {
@@ -594,6 +646,9 @@
       },
       "SalesOrderResponse": {
         "properties": {
+          "billTo": {
+            "$ref": "#/components/schemas/BillToSnapshot"
+          },
           "customerId": {
             "format": "uuid",
             "type": "string"
@@ -639,6 +694,7 @@
           "customerId",
           "shipToAddressId",
           "shipTo",
+          "billTo",
           "status",
           "warehouseCode",
           "netAmount",
@@ -1927,6 +1983,16 @@
               }
             },
             "description": "OK"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseConflictResponse"
+                }
+              }
+            },
+            "description": "Conflict"
           }
         },
         "tags": [

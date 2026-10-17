@@ -54,5 +54,5 @@ public sealed class SalesOrderTotalsTests
     }
 
     private static SalesOrder NewOrder() =>
-        SalesOrder.Create(TenantId, Guid.NewGuid(), "SO-TOTALS", Guid.NewGuid(), ShipTo);
+        SalesOrder.Create(TenantId, Guid.NewGuid(), "SO-TOTALS", Guid.NewGuid(), ShipTo, new BillToSnapshot("Kunde", "10000", null, ShipTo));
 }

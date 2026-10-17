@@ -65,6 +65,7 @@ if (!await db.Addresses.AnyAsync())
         "DE");
     db.Addresses.Add(address);
     db.CustomerAddresses.Add(CustomerAddress.Link(tenantId, customer.Id, address.Id, AddressRole.Shipping));
+    db.CustomerAddresses.Add(CustomerAddress.Link(tenantId, customer.Id, address.Id, AddressRole.Billing));
 }
 
 var secondTenantId = Guid.Parse("22222222-2222-2222-2222-222222222222");
