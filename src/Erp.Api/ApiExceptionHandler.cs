@@ -47,6 +47,12 @@ internal sealed class ApiExceptionHandler : IExceptionHandler
             .SingleOrDefaultAsync(record => record.Operation == operation && record.Key == key, cancellationToken);
         if (existing is null) return false;
 
+        if (Idempotency.Conflicts(existing.Fingerprint, Idempotency.Stashed(httpContext)))
+        {
+            await Idempotency.Mismatch().ExecuteAsync(httpContext);
+            return true;
+        }
+
         if (operation == Idempotency.StockGoodsReceipt)
         {
             var movement = await db.StockMovements.AsNoTracking()

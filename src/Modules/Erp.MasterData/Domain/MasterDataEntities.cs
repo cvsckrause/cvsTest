@@ -160,18 +160,20 @@ public sealed class Article : ITenantEntity
     {
     }
 
-    private Article(Guid tenantId, string sku, string name, decimal salesPrice)
+    private Article(Guid tenantId, string sku, string name, decimal salesPrice, TaxCode taxCode)
     {
         if (tenantId == Guid.Empty) throw new ArgumentException("Tenant is required.", nameof(tenantId));
         if (string.IsNullOrWhiteSpace(sku)) throw new ArgumentException("SKU is required.", nameof(sku));
         if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("Article name is required.", nameof(name));
         if (salesPrice < 0) throw new ArgumentOutOfRangeException(nameof(salesPrice));
+        TaxCodes.RequireDefined(taxCode, nameof(taxCode));
 
         Id = Guid.NewGuid();
         TenantId = tenantId;
         Sku = sku.Trim().ToUpperInvariant();
         Name = name.Trim();
         SalesPrice = salesPrice;
+        TaxCode = taxCode;
     }
 
     public Guid Id { get; private set; }
@@ -179,16 +181,19 @@ public sealed class Article : ITenantEntity
     public string Sku { get; private set; } = string.Empty;
     public string Name { get; private set; } = string.Empty;
     public decimal SalesPrice { get; private set; }
+    public TaxCode TaxCode { get; private set; }
 
-    public static Article Create(Guid tenantId, string sku, string name, decimal salesPrice) =>
-        new(tenantId, sku, name, salesPrice);
+    public static Article Create(Guid tenantId, string sku, string name, decimal salesPrice, TaxCode taxCode = TaxCode.Standard19) =>
+        new(tenantId, sku, name, salesPrice, taxCode);
 
-    public void Update(string name, decimal salesPrice)
+    public void Update(string name, decimal salesPrice, TaxCode taxCode)
     {
         if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("Article name is required.", nameof(name));
         if (salesPrice < 0) throw new ArgumentOutOfRangeException(nameof(salesPrice));
+        TaxCodes.RequireDefined(taxCode, nameof(taxCode));
 
         Name = name.Trim();
         SalesPrice = salesPrice;
+        TaxCode = taxCode;
     }
 }

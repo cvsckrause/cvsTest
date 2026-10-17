@@ -260,6 +260,13 @@ namespace Erp.Persistence.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
 
+                    b.Property<string>("TaxCode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Standard19");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -382,6 +389,10 @@ namespace Erp.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Fingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("Key")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -449,10 +460,38 @@ namespace Erp.Persistence.Migrations
                         .HasColumnType("bigint")
                         .HasDefaultValueSql("nextval('erp.mandant_number_seq')");
 
+                    b.Property<string>("SellerAdditionalLine")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("SellerCity")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("SellerCountryCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<string>("SellerPostalCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("SellerStreet")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Steuernummer")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("UstIdNr")
+                        .HasMaxLength(14)
+                        .HasColumnType("character varying(14)");
 
                     b.HasKey("Id");
 
@@ -701,6 +740,14 @@ namespace Erp.Persistence.Migrations
                     b.Property<Guid>("ArticleId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
                     b.Property<decimal>("Quantity")
                         .HasPrecision(18, 4)
                         .HasColumnType("numeric(18,4)");
@@ -713,6 +760,13 @@ namespace Erp.Persistence.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
 
+                    b.Property<string>("TaxCode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Standard19");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -724,7 +778,8 @@ namespace Erp.Persistence.Migrations
 
                     b.HasIndex("SalesOrderId");
 
-                    b.HasIndex("TenantId", "SalesOrderId");
+                    b.HasIndex("TenantId", "SalesOrderId", "Position")
+                        .IsUnique();
 
                     b.ToTable("sales_order_lines", "erp");
                 });

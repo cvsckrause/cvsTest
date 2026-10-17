@@ -1,4 +1,4 @@
-import { euro } from '../format'
+import { euro, taxCodes, taxRateLabel } from '../format'
 import type { StammModel } from './stamm-model'
 
 export function StammWorkspace({ model }: { model: StammModel }) {
@@ -23,6 +23,12 @@ export function StammWorkspace({ model }: { model: StammModel }) {
     setLinkRole,
     showArticles,
     showAddresses,
+    showFirma,
+    seller,
+    sellerForm,
+    setSellerForm,
+    sellerProblem,
+    saveSeller,
     editArticle,
     editAddress,
     cancelArticle,
@@ -38,7 +44,7 @@ export function StammWorkspace({ model }: { model: StammModel }) {
       <header className="topbar">
         <div>
           <p className="breadcrumb">Stammdaten</p>
-          <h1>Artikel & Adressen</h1>
+          <h1>Artikel, Adressen & Firma</h1>
         </div>
         <div className="system-state"><span /> Entwicklung · Nordics</div>
       </header>
@@ -46,10 +52,60 @@ export function StammWorkspace({ model }: { model: StammModel }) {
       <div className="workflow stamm-tabs" aria-label="Stammdatenbereiche">
         <button type="button" className={tab === 'articles' ? 'workflow-step current' : 'workflow-step'} onClick={showArticles}><span>A</span>Artikel</button>
         <button type="button" className={tab === 'addresses' ? 'workflow-step current' : 'workflow-step'} onClick={showAddresses}><span>D</span>Adressen</button>
+        <button type="button" className={tab === 'firma' ? 'workflow-step current' : 'workflow-step'} onClick={showFirma}><span>F</span>Firma</button>
       </div>
 
       <section className="workspace stamm-workspace">
-        {tab === 'articles' ? (
+        {tab === 'firma' ? (
+          <div className="document">
+            <div className="section-title">
+              <h2>Firmendaten für Rechnungen</h2>
+              {seller && <span>Mandant {seller.mandantNumber}</span>}
+            </div>
+            {sellerProblem ? (
+              <p className="empty-row">{sellerProblem}</p>
+            ) : (
+              <form className="master-form" onSubmit={saveSeller}>
+                <label>
+                  Firmenname
+                  <input value={seller?.firmenname ?? ''} readOnly disabled />
+                </label>
+                <label>
+                  Straße
+                  <input value={sellerForm.street} onChange={(event) => setSellerForm((current) => ({ ...current, street: event.target.value }))} required />
+                </label>
+                <label>
+                  PLZ
+                  <input value={sellerForm.postalCode} onChange={(event) => setSellerForm((current) => ({ ...current, postalCode: event.target.value }))} required />
+                </label>
+                <label>
+                  Ort
+                  <input value={sellerForm.city} onChange={(event) => setSellerForm((current) => ({ ...current, city: event.target.value }))} required />
+                </label>
+                <label>
+                  Land
+                  <input value={sellerForm.countryCode} onChange={(event) => setSellerForm((current) => ({ ...current, countryCode: event.target.value }))} maxLength={2} required />
+                </label>
+                <label>
+                  Zusatz
+                  <input value={sellerForm.additionalLine} onChange={(event) => setSellerForm((current) => ({ ...current, additionalLine: event.target.value }))} />
+                </label>
+                <label>
+                  Steuernummer
+                  <input value={sellerForm.steuernummer} onChange={(event) => setSellerForm((current) => ({ ...current, steuernummer: event.target.value }))} />
+                </label>
+                <label>
+                  USt-IdNr.
+                  <input value={sellerForm.ustIdNr} onChange={(event) => setSellerForm((current) => ({ ...current, ustIdNr: event.target.value }))} placeholder="DE123456789" />
+                </label>
+                <div className="form-actions">
+                  <button className="primary" type="submit" disabled={busy || !seller}>{busy ? 'Speichert …' : 'Firmendaten speichern'}</button>
+                  <p className="action-hint">Steuernummer oder USt-IdNr. ist Pflicht. Den Firmennamen legt die Registrierung fest.</p>
+                </div>
+              </form>
+            )}
+          </div>
+        ) : tab === 'articles' ? (
           <div className="document">
             <div className="section-title">
               <h2>{editingArticleId ? 'Artikel bearbeiten' : 'Artikel anlegen'}</h2>
@@ -67,6 +123,14 @@ export function StammWorkspace({ model }: { model: StammModel }) {
               <label>
                 Verkaufspreis
                 <input type="number" min="0" step="0.01" value={articleForm.salesPrice} onChange={(event) => setArticleForm((current) => ({ ...current, salesPrice: Number(event.target.value) }))} required />
+              </label>
+              <label>
+                Umsatzsteuer
+                <select value={articleForm.taxCode} onChange={(event) => setArticleForm((current) => ({ ...current, taxCode: event.target.value }))}>
+                  {taxCodes.map((item) => (
+                    <option key={item.code} value={item.code}>{item.label}</option>
+                  ))}
+                </select>
               </label>
               {!editingArticleId && (
                 <label>
@@ -87,13 +151,14 @@ export function StammWorkspace({ model }: { model: StammModel }) {
             </div>
             <div className="master-list" role="table" aria-label="Artikelliste">
               <div className="master-row master-head" role="row">
-                <span>SKU</span><span>Bezeichnung</span><span>Preis</span><span />
+                <span>SKU</span><span>Bezeichnung</span><span>Preis</span><span>USt</span><span />
               </div>
               {articles.map((article) => (
                 <div className="master-row" role="row" key={article.id}>
                   <strong>{article.sku}</strong>
                   <span>{article.name}</span>
                   <span>{euro(article.salesPrice)}</span>
+                  <span>{taxRateLabel(article.taxCode)}</span>
                   <button className="secondary" type="button" onClick={() => editArticle(article)}>Bearbeiten</button>
                 </div>
               ))}
@@ -192,7 +257,7 @@ export function StammWorkspace({ model }: { model: StammModel }) {
         <aside className="summary">
           <div className="summary-heading">
             <span className="status">Stamm</span>
-            <span>{tab === 'articles' ? 'Artikel' : 'Adressen'}</span>
+            <span>{tab === 'articles' ? 'Artikel' : tab === 'addresses' ? 'Adressen' : 'Firma'}</span>
           </div>
           <p className="action-hint">{notice}</p>
           <button className="secondary" type="button" onClick={openSales}>Zur Auftragserfassung</button>

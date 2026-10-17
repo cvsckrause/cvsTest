@@ -24,8 +24,19 @@ export type StockBalanceRow = Json<Schemas['StockResponse']>
 export type StockMovementRow = Json<Schemas['StockMovementResponse']>
 export type StockReceipt = Json<Schemas['StockReceiptResponse']>
 export type Session = Json<Schemas['SessionResponse']>
+export type SellerDetails = Json<Schemas['SellerDetailsResponse']>
+export type SellerDetailsUpdate = Json<Schemas['UpdateSellerDetailsRequest']>
 
 const baseUrl = import.meta.env.VITE_API_URL ?? '/api/v1'
+
+export class ApiError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
 
 function failureMessage(status: number, method?: string) {
   const verb = (method ?? 'GET').toUpperCase() === 'GET' ? 'Laden' : 'Speichern'
@@ -36,7 +47,7 @@ async function readJson<T>(response: Response, path: string, method?: string): P
   const contentType = response.headers.get('content-type') ?? ''
   const raw = await response.text()
   if (!raw) {
-    if (!response.ok) throw new Error(failureMessage(response.status, method))
+    if (!response.ok) throw new ApiError(failureMessage(response.status, method), response.status)
     return undefined as T
   }
 
@@ -71,7 +82,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const payload = await readJson<{ detail?: string; error?: string } & T>(response, path, init?.method)
   if (!response.ok) {
-    throw new Error(payload?.detail ?? payload?.error ?? failureMessage(response.status, init?.method))
+    throw new ApiError(payload?.detail ?? payload?.error ?? failureMessage(response.status, init?.method), response.status)
   }
 
   return payload as T
@@ -79,18 +90,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const erpApi = {
   session: () => request<Session>('/session'),
+  sellerDetails: () => request<SellerDetails>('/mandant/seller'),
+  updateSellerDetails: (payload: SellerDetailsUpdate) =>
+    request<SellerDetails>('/mandant/seller', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
   customers: (after?: string) =>
     request<Customer[]>(`/customers${after ? `?after=${encodeURIComponent(after)}` : ''}`),
   articles: (q?: string) => request<Article[]>(`/articles${q ? `?q=${encodeURIComponent(q)}` : ''}`),
-  createArticle: (sku: string, name: string, salesPrice: number, openingStock = 0) =>
+  createArticle: (sku: string, name: string, salesPrice: number, openingStock = 0, taxCode = 'Standard19') =>
     request<Article>('/articles', {
       method: 'POST',
-      body: JSON.stringify({ sku, name, salesPrice, openingStock }),
+      body: JSON.stringify({ sku, name, salesPrice, openingStock, taxCode }),
     }),
-  updateArticle: (id: string, name: string, salesPrice: number) =>
+  updateArticle: (id: string, name: string, salesPrice: number, taxCode: string) =>
     request<Article>(`/articles/${id}`, {
       method: 'PUT',
-      body: JSON.stringify({ name, salesPrice }),
+      body: JSON.stringify({ name, salesPrice, taxCode }),
     }),
   addresses: (q?: string) => request<Address[]>(`/addresses${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   createAddress: (payload: Omit<Address, 'id'>) =>

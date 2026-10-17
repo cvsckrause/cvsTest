@@ -83,6 +83,7 @@ public sealed class ErpDbContext(
             entity.Property(x => x.Sku).HasMaxLength(80);
             entity.Property(x => x.Name).HasMaxLength(240);
             entity.Property(x => x.SalesPrice).HasPrecision(18, 4);
+            entity.Property(x => x.TaxCode).HasConversion<string>().HasMaxLength(20).HasDefaultValue(TaxCode.Standard19);
             entity.HasIndex(x => new { x.TenantId, x.Sku }).IsUnique();
             entity.HasQueryFilter(x => x.TenantId == tenantContext.TenantId);
         });
@@ -137,9 +138,12 @@ public sealed class ErpDbContext(
             entity.ToTable("sales_order_lines");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Sku).HasMaxLength(80);
+            entity.Property(x => x.Description).HasMaxLength(240);
+            entity.Property(x => x.TaxCode).HasConversion<string>().HasMaxLength(20).HasDefaultValue(TaxCode.Standard19);
             entity.Property(x => x.Quantity).HasPrecision(18, 4);
             entity.Property(x => x.UnitPrice).HasPrecision(18, 4);
-            entity.HasIndex(x => new { x.TenantId, x.SalesOrderId });
+            entity.Ignore(x => x.NetAmount);
+            entity.HasIndex(x => new { x.TenantId, x.SalesOrderId, x.Position }).IsUnique();
             entity.HasQueryFilter(x => x.TenantId == tenantContext.TenantId);
         });
 
@@ -203,6 +207,7 @@ public sealed class ErpDbContext(
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Key).HasMaxLength(200);
             entity.Property(x => x.Operation).HasMaxLength(100);
+            entity.Property(x => x.Fingerprint).HasMaxLength(64);
             entity.HasIndex(x => new { x.TenantId, x.Operation, x.Key }).IsUnique();
             entity.HasQueryFilter(x => x.TenantId == tenantContext.TenantId);
         });
@@ -238,6 +243,13 @@ public sealed class ErpDbContext(
             entity.Property(x => x.Firmenname).HasMaxLength(Mandant.FirmennameMaxLength);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
             entity.Property(x => x.ApprovalTokenHash).HasMaxLength(64);
+            entity.Property(x => x.SellerStreet).HasMaxLength(Mandant.StreetMaxLength);
+            entity.Property(x => x.SellerPostalCode).HasMaxLength(Mandant.PostalCodeMaxLength);
+            entity.Property(x => x.SellerCity).HasMaxLength(Mandant.CityMaxLength);
+            entity.Property(x => x.SellerCountryCode).HasMaxLength(2);
+            entity.Property(x => x.SellerAdditionalLine).HasMaxLength(Mandant.StreetMaxLength);
+            entity.Property(x => x.Steuernummer).HasMaxLength(Mandant.SteuernummerMaxLength);
+            entity.Property(x => x.UstIdNr).HasMaxLength(Mandant.UstIdNrMaxLength);
             entity.Ignore(x => x.Label);
             entity.HasIndex(x => x.Number).IsUnique();
             entity.HasIndex(x => x.ApprovalTokenHash).IsUnique();

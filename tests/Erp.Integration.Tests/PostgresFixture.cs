@@ -178,8 +178,12 @@ public sealed class PostgresFixture : IAsyncLifetime
             .UseNpgsql(adminConnectionString)
             .Options;
         await using var db = new ErpDbContext(options, new TenantContext(Guid.NewGuid(), "membership-seed"));
-        db.Mandanten.Add(Mandant.Seed(TenantA, MandantNumberA, "A Handels GmbH", DateTimeOffset.UtcNow));
-        db.Mandanten.Add(Mandant.Seed(TenantB, MandantNumberB, "B Vertrieb GmbH", DateTimeOffset.UtcNow));
+        var mandantA = Mandant.Seed(TenantA, MandantNumberA, "A Handels GmbH", DateTimeOffset.UtcNow);
+        mandantA.ChangeSellerDetails("Alsterweg 1", "20095", "Hamburg", "DE", null, "22/111/11111", "DE111111111");
+        var mandantB = Mandant.Seed(TenantB, MandantNumberB, "B Vertrieb GmbH", DateTimeOffset.UtcNow);
+        mandantB.ChangeSellerDetails("Brückenstraße 2", "10179", "Berlin", "DE", null, "37/222/22222", null);
+        db.Mandanten.Add(mandantA);
+        db.Mandanten.Add(mandantB);
         db.TenantMemberships.Add(TenantMembership.Grant("integration-a", TenantA, isDefault: true));
         db.TenantMemberships.Add(TenantMembership.Grant("integration-b", TenantB, isDefault: true));
         await db.SaveChangesAsync();

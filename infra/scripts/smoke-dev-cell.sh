@@ -154,6 +154,30 @@ if [[ "${approve_status}" != "404" ]]; then
 fi
 echo "Anonymous approval endpoint is reachable through CloudFront."
 
+# Invoices will need complete seller details. Demo values fill only the fields that are still empty,
+# so details entered on the cell survive.
+seller="$(request GET /api/v1/mandant/seller)"
+if jq -e '.missingFields | length > 0' <<<"${seller}" >/dev/null; then
+  seller="$(request PUT /api/v1/mandant/seller "$(jq -c '
+    (.steuernummer == null and .ustIdNr == null) as $noTaxId
+    | {
+        street: (.street // "Hafenstraße 1"),
+        postalCode: (.postalCode // "20095"),
+        city: (.city // "Hamburg"),
+        countryCode: (.countryCode // "DE"),
+        additionalLine,
+        steuernummer: (if $noTaxId then "22/123/45678" else .steuernummer end),
+        ustIdNr: (if $noTaxId then "DE123456789" else .ustIdNr end)
+      }' <<<"${seller}")")"
+  if ! jq -e '.missingFields | length == 0' <<<"${seller}" >/dev/null; then
+    echo "PUT /api/v1/mandant/seller left fields missing: ${seller}" >&2
+    exit 1
+  fi
+  echo "Seller details seeded for the bootstrap Mandant."
+else
+  echo "Seller details of the bootstrap Mandant are complete."
+fi
+
 suffix="${RUN_ID}"
 customer="$(request POST /api/v1/customers "$(jq -nc --arg n "SMK-${suffix}" '{number:$n,name:"Smoke Customer"}')")"
 customer_id="$(jq -er '.id' <<<"${customer}")"

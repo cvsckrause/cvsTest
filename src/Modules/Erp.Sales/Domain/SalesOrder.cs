@@ -66,8 +66,9 @@ public sealed class SalesOrder : ITenantEntity
     public SalesOrderStatus Status { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? ReleasedAt { get; private set; }
-    public IReadOnlyCollection<SalesOrderLine> Lines => _lines;
-    public decimal NetAmount => _lines.Sum(line => line.Quantity * line.UnitPrice);
+    // Loaded rows arrive in no particular order; Position is the order the lines were captured in.
+    public IReadOnlyCollection<SalesOrderLine> Lines => _lines.OrderBy(line => line.Position).ToArray();
+    public decimal NetAmount => _lines.Sum(line => line.NetAmount);
 
     public AddressSnapshot ShipToSnapshot =>
         new(ShipToName, ShipToStreet, ShipToPostalCode, ShipToCity, ShipToCountryCode, ShipToAdditionalLine);
@@ -81,10 +82,10 @@ public sealed class SalesOrder : ITenantEntity
         string warehouseCode = "MAIN") =>
         new(tenantId, customerId, orderNumber, shipToAddressId, shipTo, warehouseCode);
 
-    public void AddLine(Guid articleId, string sku, decimal quantity, decimal unitPrice)
+    public void AddLine(Guid articleId, string sku, string description, TaxCode taxCode, decimal quantity, decimal unitPrice)
     {
         EnsureDraft();
-        _lines.Add(SalesOrderLine.Create(Id, TenantId, articleId, sku, quantity, unitPrice));
+        _lines.Add(SalesOrderLine.Create(Id, TenantId, _lines.Count + 1, articleId, sku, description, taxCode, quantity, unitPrice));
     }
 
     public SalesOrderReleased Release()
@@ -108,7 +109,7 @@ public sealed class SalesOrder : ITenantEntity
             OrderNumber,
             NetAmount,
             ShipToSnapshot,
-            _lines.Select(line => new ReleasedSalesOrderLine(line.ArticleId, line.Sku, line.Quantity)).ToArray());
+            Lines.Select(line => new ReleasedSalesOrderLine(line.ArticleId, line.Sku, line.Quantity)).ToArray());
     }
 
     public SalesOrderCancelled Cancel()
@@ -127,7 +128,7 @@ public sealed class SalesOrder : ITenantEntity
             Id,
             OrderNumber,
             WarehouseCode,
-            _lines.Select(line => new ReleasedSalesOrderLine(line.ArticleId, line.Sku, line.Quantity)).ToArray());
+            Lines.Select(line => new ReleasedSalesOrderLine(line.ArticleId, line.Sku, line.Quantity)).ToArray());
     }
 
     private void EnsureDraft()
@@ -161,21 +162,29 @@ public sealed class SalesOrderLine : ITenantEntity
     private SalesOrderLine(
         Guid salesOrderId,
         Guid tenantId,
+        int position,
         Guid articleId,
         string sku,
+        string description,
+        TaxCode taxCode,
         decimal quantity,
         decimal unitPrice)
     {
         if (articleId == Guid.Empty) throw new ArgumentException("Article is required.", nameof(articleId));
         if (string.IsNullOrWhiteSpace(sku)) throw new ArgumentException("SKU is required.", nameof(sku));
+        if (string.IsNullOrWhiteSpace(description)) throw new ArgumentException("Line description is required.", nameof(description));
+        TaxCodes.RequireDefined(taxCode, nameof(taxCode));
         if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity));
         if (unitPrice < 0) throw new ArgumentOutOfRangeException(nameof(unitPrice));
 
         Id = Guid.NewGuid();
         SalesOrderId = salesOrderId;
         TenantId = tenantId;
+        Position = position;
         ArticleId = articleId;
         Sku = sku.Trim().ToUpperInvariant();
+        Description = description.Trim();
+        TaxCode = taxCode;
         Quantity = quantity;
         UnitPrice = unitPrice;
     }
@@ -183,19 +192,26 @@ public sealed class SalesOrderLine : ITenantEntity
     public Guid Id { get; private set; }
     public Guid SalesOrderId { get; private set; }
     public Guid TenantId { get; private set; }
+    public int Position { get; private set; }
     public Guid ArticleId { get; private set; }
     public string Sku { get; private set; } = string.Empty;
+    public string Description { get; private set; } = string.Empty;
+    public TaxCode TaxCode { get; private set; }
     public decimal Quantity { get; private set; }
     public decimal UnitPrice { get; private set; }
+    public decimal NetAmount => Money.Round(Quantity * UnitPrice);
 
     internal static SalesOrderLine Create(
         Guid salesOrderId,
         Guid tenantId,
+        int position,
         Guid articleId,
         string sku,
+        string description,
+        TaxCode taxCode,
         decimal quantity,
         decimal unitPrice) =>
-        new(salesOrderId, tenantId, articleId, sku, quantity, unitPrice);
+        new(salesOrderId, tenantId, position, articleId, sku, description, taxCode, quantity, unitPrice);
 }
 
 public sealed record ReleasedSalesOrderLine(Guid ArticleId, string Sku, decimal Quantity);

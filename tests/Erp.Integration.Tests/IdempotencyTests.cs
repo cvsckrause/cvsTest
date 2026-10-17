@@ -70,6 +70,104 @@ public sealed class IdempotencyTests(PostgresFixture fixture)
         Assert.Equal(13m, stock.OnHand(graph.ArticleId));
     }
 
+    [Fact]
+    public async Task Same_receipt_key_with_a_different_quantity_is_rejected()
+    {
+        using var api = fixture.OpenSession(fixture.TenantA);
+        var graph = await CreateGraphAsync(api, "RQ2");
+        var reference = "RQ2-" + Guid.NewGuid().ToString("N")[..8];
+        var key = Guid.NewGuid().ToString("N");
+
+        var first = await api.PostAsync(
+            "/api/v1/stock/receipts",
+            new { articleId = graph.ArticleId, quantity = 3m, warehouseCode = "MAIN", reference },
+            key);
+        var second = await api.PostAsync(
+            "/api/v1/stock/receipts",
+            new { articleId = graph.ArticleId, quantity = 4m, warehouseCode = "MAIN", reference },
+            key);
+
+        Assert.Equal(HttpStatusCode.Created, first.Status);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, second.Status);
+        Assert.Contains("The idempotency key was reused with a different request.", second.Body);
+        Assert.Contains("This Idempotency-Key was already used for a different request.", second.Body);
+        Assert.Equal(1, await fixture.Probe.CountMovementsAsync(fixture.TenantA, reference));
+    }
+
+    [Fact]
+    public async Task Same_order_key_with_a_different_quantity_is_rejected()
+    {
+        using var api = fixture.OpenSession(fixture.TenantA);
+        var graph = await CreateGraphAsync(api, "OQ2");
+        var orderNumber = "OQ2-" + Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
+        var key = Guid.NewGuid().ToString("N");
+
+        var first = await api.PostAsync("/api/v1/sales-orders", OrderBody(graph, orderNumber), key);
+        var second = await api.PostAsync(
+            "/api/v1/sales-orders",
+            new
+            {
+                customerId = graph.CustomerId,
+                shipToAddressId = graph.AddressId,
+                orderNumber,
+                lines = new[] { new { articleId = graph.ArticleId, quantity = 2m } }
+            },
+            key);
+
+        Assert.Equal(HttpStatusCode.Created, first.Status);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, second.Status);
+        Assert.Contains("The idempotency key was reused with a different request.", second.Body);
+        Assert.Equal(1, await fixture.Probe.CountOrdersAsync(fixture.TenantA, orderNumber));
+    }
+
+    [Fact]
+    public async Task A_key_saved_without_a_fingerprint_replays_any_body()
+    {
+        using var api = fixture.OpenSession(fixture.TenantA);
+        var graph = await CreateGraphAsync(api, "LEG");
+        var reference = "LEG-" + Guid.NewGuid().ToString("N")[..8];
+        var key = Guid.NewGuid().ToString("N");
+
+        var first = await api.PostAsync(
+            "/api/v1/stock/receipts",
+            new { articleId = graph.ArticleId, quantity = 3m, warehouseCode = "MAIN", reference },
+            key);
+        await fixture.Probe.ClearIdempotencyFingerprintAsync(fixture.TenantA, key);
+        var second = await api.PostAsync(
+            "/api/v1/stock/receipts",
+            new { articleId = graph.ArticleId, quantity = 9m, warehouseCode = "MAIN", reference },
+            key);
+
+        Assert.Equal(HttpStatusCode.Created, first.Status);
+        Assert.Equal(HttpStatusCode.OK, second.Status);
+        Assert.True(second.Replayed);
+        Assert.Equal(first.Id, second.Id);
+        Assert.Equal(1, await fixture.Probe.CountMovementsAsync(fixture.TenantA, reference));
+    }
+
+    [Fact]
+    public async Task A_non_positive_receipt_is_rejected_before_the_key_is_checked()
+    {
+        using var api = fixture.OpenSession(fixture.TenantA);
+        var graph = await CreateGraphAsync(api, "QTY");
+        var reference = "QTY-" + Guid.NewGuid().ToString("N")[..8];
+        var key = Guid.NewGuid().ToString("N");
+
+        var first = await api.PostAsync(
+            "/api/v1/stock/receipts",
+            new { articleId = graph.ArticleId, quantity = 3m, warehouseCode = "MAIN", reference },
+            key);
+        var second = await api.PostAsync(
+            "/api/v1/stock/receipts",
+            new { articleId = graph.ArticleId, quantity = 0m, warehouseCode = "MAIN", reference },
+            key);
+
+        Assert.Equal(HttpStatusCode.Created, first.Status);
+        Assert.Equal(HttpStatusCode.BadRequest, second.Status);
+        Assert.Contains("Quantity must be positive.", second.Body);
+        Assert.Equal(1, await fixture.Probe.CountMovementsAsync(fixture.TenantA, reference));
+    }
+
     private static async Task<TenantGraph> CreateGraphAsync(ApiSession api, string label)
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];

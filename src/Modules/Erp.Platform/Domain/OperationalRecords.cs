@@ -135,13 +135,14 @@ public sealed class IdempotencyRecord : ITenantEntity
     {
     }
 
-    private IdempotencyRecord(Guid tenantId, string key, string operation, Guid resourceId)
+    private IdempotencyRecord(Guid tenantId, string key, string operation, Guid resourceId, string? fingerprint)
     {
         Id = Guid.NewGuid();
         TenantId = tenantId;
         Key = key;
         Operation = operation;
         ResourceId = resourceId;
+        Fingerprint = fingerprint;
         CreatedAt = DateTimeOffset.UtcNow;
     }
 
@@ -150,10 +151,11 @@ public sealed class IdempotencyRecord : ITenantEntity
     public string Key { get; private set; } = string.Empty;
     public string Operation { get; private set; } = string.Empty;
     public Guid ResourceId { get; private set; }
+    public string? Fingerprint { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
 
-    public static IdempotencyRecord Create(Guid tenantId, string key, string operation, Guid resourceId) =>
-        new(tenantId, key, operation, resourceId);
+    public static IdempotencyRecord Create(Guid tenantId, string key, string operation, Guid resourceId, string? fingerprint) =>
+        new(tenantId, key, operation, resourceId, fingerprint);
 }
 
 public sealed class InboxMessage

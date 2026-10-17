@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { erpApi } from '../api'
-import type { Address, Article, Customer } from '../api'
+import { ApiError, erpApi } from '../api'
+import type { Address, Article, Customer, SellerDetails } from '../api'
 import { keepOrFirst } from '../format'
 import type { AppRoute, StammTab } from '../route'
 
-const emptyArticle = { sku: '', name: '', salesPrice: 0, openingStock: 0 }
+const emptyArticle = { sku: '', name: '', salesPrice: 0, openingStock: 0, taxCode: 'Standard19' }
 const emptyAddress = { name: '', street: '', postalCode: '', city: '', countryCode: 'DE', additionalLine: '' }
+const emptySeller = { street: '', postalCode: '', city: '', countryCode: 'DE', additionalLine: '', steuernummer: '', ustIdNr: '' }
 
 type StammModelArgs = {
   tab: StammTab
@@ -52,6 +53,9 @@ export function useStammWorkspace({
   const [linkCustomerId, setLinkCustomerId] = useState('')
   const [linkAddressId, setLinkAddressId] = useState('')
   const [linkRole, setLinkRole] = useState('Shipping')
+  const [seller, setSeller] = useState<SellerDetails | null>(null)
+  const [sellerForm, setSellerForm] = useState(emptySeller)
+  const [sellerProblem, setSellerProblem] = useState<string | null>(null)
 
   const selectedLinkCustomerId = keepOrFirst(linkCustomerId, customers.map((customer) => customer.id))
   const selectedLinkAddressId = keepOrFirst(linkAddressId, addresses.map((address) => address.id))
@@ -63,7 +67,7 @@ export function useStammWorkspace({
     const apply = (article: Article) => {
       if (cancelled) return
       setEditingArticleId(article.id)
-      setArticleForm({ sku: article.sku, name: article.name, salesPrice: article.salesPrice, openingStock: 0 })
+      setArticleForm(articleFormOf(article))
     }
     if (known) apply(known)
     else {
@@ -103,6 +107,60 @@ export function useStammWorkspace({
     }
   }, [active, tab, documentId, addresses, editingAddressId, setNotice])
 
+  useEffect(() => {
+    if (!active || tab !== 'firma') return
+    let cancelled = false
+    erpApi.sellerDetails()
+      .then((loaded) => {
+        if (cancelled) return
+        setSellerProblem(null)
+        applySeller(loaded)
+      })
+      .catch((error: Error) => {
+        if (cancelled) return
+        setSellerProblem(
+          error instanceof ApiError && error.status === 404
+            ? 'Für diesen Mandanten sind keine Firmendaten hinterlegt.'
+            : 'Firmendaten konnten nicht geladen werden. Tab erneut öffnen, um es noch einmal zu versuchen.',
+        )
+        setNotice(error.message)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [active, tab, setNotice])
+
+  function applySeller(loaded: SellerDetails) {
+    setSeller(loaded)
+    setSellerForm(sellerFormOf(loaded))
+  }
+
+  function showFirma() {
+    navigate({ workspace: 'stamm', tab: 'firma', documentId: null })
+  }
+
+  async function saveSeller(event: FormEvent) {
+    event.preventDefault()
+    setBusy(true)
+    try {
+      const saved = await erpApi.updateSellerDetails({
+        street: sellerForm.street,
+        postalCode: sellerForm.postalCode,
+        city: sellerForm.city,
+        countryCode: sellerForm.countryCode,
+        additionalLine: sellerForm.additionalLine || null,
+        steuernummer: sellerForm.steuernummer || null,
+        ustIdNr: sellerForm.ustIdNr || null,
+      })
+      applySeller(saved)
+      setNotice('Firmendaten gespeichert.')
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Firmendaten konnten nicht gespeichert werden.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   function showArticles() {
     navigate({ workspace: 'stamm', tab: 'articles', documentId: editingArticleId })
   }
@@ -113,7 +171,7 @@ export function useStammWorkspace({
 
   function editArticle(article: Article) {
     setEditingArticleId(article.id)
-    setArticleForm({ sku: article.sku, name: article.name, salesPrice: article.salesPrice, openingStock: 0 })
+    setArticleForm(articleFormOf(article))
     navigate({ workspace: 'stamm', tab: 'articles', documentId: article.id })
   }
 
@@ -147,10 +205,10 @@ export function useStammWorkspace({
     setBusy(true)
     try {
       if (editingArticleId) {
-        await erpApi.updateArticle(editingArticleId, articleForm.name, articleForm.salesPrice)
+        await erpApi.updateArticle(editingArticleId, articleForm.name, articleForm.salesPrice, articleForm.taxCode)
         setNotice(`Artikel ${articleForm.sku || editingArticleId} aktualisiert.`)
       } else {
-        await erpApi.createArticle(articleForm.sku, articleForm.name, articleForm.salesPrice, articleForm.openingStock)
+        await erpApi.createArticle(articleForm.sku, articleForm.name, articleForm.salesPrice, articleForm.openingStock, articleForm.taxCode)
         setNotice(`Artikel ${articleForm.sku} angelegt.`)
       }
       setEditingArticleId(null)
@@ -231,6 +289,12 @@ export function useStammWorkspace({
     setLinkRole,
     showArticles,
     showAddresses,
+    showFirma,
+    seller,
+    sellerForm,
+    setSellerForm,
+    sellerProblem,
+    saveSeller,
     editArticle,
     editAddress,
     cancelArticle,
@@ -239,6 +303,22 @@ export function useStammWorkspace({
     saveAddress,
     linkAddress,
     openSales,
+  }
+}
+
+function articleFormOf(article: Article) {
+  return { sku: article.sku, name: article.name, salesPrice: article.salesPrice, openingStock: 0, taxCode: article.taxCode }
+}
+
+function sellerFormOf(seller: SellerDetails) {
+  return {
+    street: seller.street ?? '',
+    postalCode: seller.postalCode ?? '',
+    city: seller.city ?? '',
+    countryCode: seller.countryCode ?? emptySeller.countryCode,
+    additionalLine: seller.additionalLine ?? '',
+    steuernummer: seller.steuernummer ?? '',
+    ustIdNr: seller.ustIdNr ?? '',
   }
 }
 

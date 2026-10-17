@@ -72,6 +72,64 @@ public sealed class MandantTests
     }
 
     [Fact]
+    public void New_Mandant_lists_every_missing_seller_field()
+    {
+        var mandant = Mandant.Seed(Tenant, 100, "Demo", DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(
+            ["street", "postalCode", "city", "countryCode", "steuernummerOrUstIdNr"],
+            mandant.MissingSellerFields());
+    }
+
+    [Fact]
+    public void Seller_details_with_a_Steuernummer_only_are_complete()
+    {
+        var mandant = Mandant.Seed(Tenant, 100, "Demo", DateTimeOffset.UnixEpoch);
+
+        mandant.ChangeSellerDetails(" Hafenstraße 1 ", "20095", "Hamburg", "de", " ", "  12/345/67890 ", null);
+
+        Assert.Empty(mandant.MissingSellerFields());
+        Assert.Equal("Hafenstraße 1", mandant.SellerStreet);
+        Assert.Equal("DE", mandant.SellerCountryCode);
+        Assert.Null(mandant.SellerAdditionalLine);
+        Assert.Equal("12/345/67890", mandant.Steuernummer);
+        Assert.Null(mandant.UstIdNr);
+    }
+
+    [Fact]
+    public void UstIdNr_is_stored_upper_case_without_spaces()
+    {
+        var mandant = Mandant.Seed(Tenant, 100, "Demo", DateTimeOffset.UnixEpoch);
+
+        mandant.ChangeSellerDetails("Hafenstraße 1", "20095", "Hamburg", "DE", null, null, "de 123 456 789");
+
+        Assert.Equal("DE123456789", mandant.UstIdNr);
+        Assert.Null(mandant.Steuernummer);
+        Assert.Empty(mandant.MissingSellerFields());
+    }
+
+    [Theory]
+    [InlineData("", "20095", "Hamburg", "DE", "12/345/67890", null)]
+    [InlineData("Hafenstraße 1", " ", "Hamburg", "DE", "12/345/67890", null)]
+    [InlineData("Hafenstraße 1", "20095", "", "DE", "12/345/67890", null)]
+    [InlineData("Hafenstraße 1", "20095", "Hamburg", "D", "12/345/67890", null)]
+    [InlineData("Hafenstraße 1", "20095", "Hamburg", "DE", null, null)]
+    [InlineData("Hafenstraße 1", "20095", "Hamburg", "DE", " ", " ")]
+    [InlineData("Hafenstraße 1", "20095", "Hamburg", "DE", null, "D1")]
+    [InlineData("Hafenstraße 1", "20095", "Hamburg", "DE", null, "DE12345678901234")]
+    [InlineData("Hafenstraße 1", "20095", "Hamburg", "DE", null, "1E123456789")]
+    [InlineData("Hafenstraße 1", "20095", "Hamburg", "DE", null, "DE-123456789")]
+    public void Incomplete_or_malformed_seller_details_are_rejected(
+        string street, string postalCode, string city, string countryCode, string? steuernummer, string? ustIdNr)
+    {
+        var mandant = Mandant.Seed(Tenant, 100, "Demo", DateTimeOffset.UnixEpoch);
+
+        Assert.Throws<ArgumentException>(() =>
+            mandant.ChangeSellerDetails(street, postalCode, city, countryCode, null, steuernummer, ustIdNr));
+        Assert.NotEmpty(mandant.MissingSellerFields());
+    }
+
+    [Fact]
     public void User_names_are_stored_lower_case()
     {
         var user = MandantUser.Create(Tenant, " Kunde ", "info@example.com");
