@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Npgsql;
 
 namespace Erp.Integration.Tests;
 
@@ -126,6 +127,209 @@ public sealed class SalesOrderReadTests(PostgresFixture fixture)
         using var listDoc = JsonDocument.Parse(list.Body);
         var summary = listDoc.RootElement.EnumerateArray().Single(item => item.GetProperty("id").GetGuid() == order.Id);
         Assert.Equal(1.13m, summary.GetProperty("netAmount").GetDecimal());
+        Assert.False(summary.TryGetProperty("grossAmount", out _));
+        Assert.False(summary.TryGetProperty("taxTotals", out _));
+    }
+
+    [Fact]
+    public async Task Saved_order_and_its_invoice_share_the_mixed_rate_totals()
+    {
+        using var api = fixture.OpenSession(fixture.TenantA);
+        var suffix = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
+        var bike = await api.PostOkAsync("/api/v1/articles", new
+        {
+            sku = $"BIKE-{suffix}",
+            name = "Cityrad",
+            salesPrice = 799.00m,
+            openingStock = 5m
+        });
+        var lockItem = await api.PostOkAsync("/api/v1/articles", new
+        {
+            sku = $"LOCK-{suffix}",
+            name = "Schloss",
+            salesPrice = 12.99m,
+            openingStock = 5m,
+            taxCode = "Reduced7"
+        });
+        var order = await api.PostOkAsync(
+            "/api/v1/sales-orders",
+            new
+            {
+                customerId = fixture.SeedA.CustomerId,
+                shipToAddressId = fixture.SeedA.AddressId,
+                orderNumber = $"AE3-{suffix}",
+                lines = new[]
+                {
+                    new { articleId = bike.Id, quantity = 2m },
+                    new { articleId = lockItem.Id, quantity = 3m }
+                }
+            },
+            $"ae3-{suffix}");
+
+        var detail = await api.GetAsync($"/api/v1/sales-orders/{order.Id}");
+        using var detailDoc = JsonDocument.Parse(detail.Body);
+        AssertTaxTotals(detailDoc.RootElement, 1636.97m, 306.35m, 1943.32m);
+
+        await api.PostOkAsync($"/api/v1/sales-orders/{order.Id}/release", new { }, $"ae3-release-{suffix}");
+        var messageId = await fixture.Probe.OutboxIdForOrderEventAsync(fixture.TenantA, order.Id, "erp.sales-order.released.v1");
+        await ProcessUntilAsync(messageId);
+
+        var invoices = await api.GetAsync($"/api/v1/sales-orders/{order.Id}/invoices");
+        using var invoiceList = JsonDocument.Parse(invoices.Body);
+        var listed = Assert.Single(invoiceList.RootElement.EnumerateArray());
+        AssertInvoiceContent(listed);
+        var invoice = await api.GetAsync($"/api/v1/invoices/{listed.GetProperty("id").GetGuid()}");
+        using var invoiceDoc = JsonDocument.Parse(invoice.Body);
+        AssertInvoiceContent(invoiceDoc.RootElement);
+
+        var released = await api.GetAsync($"/api/v1/sales-orders/{order.Id}");
+        using var releasedDoc = JsonDocument.Parse(released.Body);
+        Assert.Equal(
+            TaxRows(listed.GetProperty("taxTotals")),
+            TaxRows(releasedDoc.RootElement.GetProperty("taxTotals")));
+    }
+
+    [Fact]
+    public async Task Zero_rated_order_has_one_zero_tax_total()
+    {
+        using var api = fixture.OpenSession(fixture.TenantA);
+        var suffix = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
+        var article = await api.PostOkAsync("/api/v1/articles", new
+        {
+            sku = $"FREE-{suffix}",
+            name = "Spende",
+            salesPrice = 20m,
+            openingStock = 1m,
+            taxCode = "Zero"
+        });
+        var order = await api.PostOkAsync(
+            "/api/v1/sales-orders",
+            new
+            {
+                customerId = fixture.SeedA.CustomerId,
+                shipToAddressId = fixture.SeedA.AddressId,
+                orderNumber = $"ZERO-{suffix}",
+                lines = new[] { new { articleId = article.Id, quantity = 1m } }
+            },
+            $"zero-{suffix}");
+
+        var detail = await api.GetAsync($"/api/v1/sales-orders/{order.Id}");
+        using var detailDoc = JsonDocument.Parse(detail.Body);
+        Assert.Equal(0.00m, detailDoc.RootElement.GetProperty("taxAmount").GetDecimal());
+        Assert.Equal(20.00m, detailDoc.RootElement.GetProperty("grossAmount").GetDecimal());
+        var total = Assert.Single(detailDoc.RootElement.GetProperty("taxTotals").EnumerateArray());
+        Assert.Equal(0m, total.GetProperty("rate").GetDecimal());
+        Assert.Equal("Z", total.GetProperty("category").GetString());
+        Assert.Equal(0.00m, total.GetProperty("taxAmount").GetDecimal());
+    }
+
+    [Fact]
+    public async Task Legacy_invoice_returns_its_number_and_net_without_content()
+    {
+        using var api = fixture.OpenSession(fixture.TenantA);
+        var draft = await CreateDraftOrderAsync(api, "LEGACY");
+        var invoiceId = Guid.NewGuid();
+        var number = "R-LEGACY-" + Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
+        await using (var connection = new NpgsqlConnection(fixture.AdminConnectionString))
+        {
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand(
+                """
+                insert into erp.invoices ("Id", "TenantId", "SalesOrderId", "Number", "NetAmount", "CreatedAt")
+                values (@id, @tenant, @order, @number, 12.50, now())
+                """,
+                connection);
+            command.Parameters.AddWithValue("id", invoiceId);
+            command.Parameters.AddWithValue("tenant", fixture.TenantA);
+            command.Parameters.AddWithValue("order", draft.Id);
+            command.Parameters.AddWithValue("number", number);
+            await command.ExecuteNonQueryAsync();
+        }
+
+        try
+        {
+            var invoice = await api.GetAsync($"/api/v1/invoices/{invoiceId}");
+            using var invoiceDoc = JsonDocument.Parse(invoice.Body);
+            AssertLegacy(invoiceDoc.RootElement, number);
+
+            var listed = await api.GetAsync($"/api/v1/sales-orders/{draft.Id}/invoices");
+            using var listDoc = JsonDocument.Parse(listed.Body);
+            AssertLegacy(Assert.Single(listDoc.RootElement.EnumerateArray()), number);
+        }
+        finally
+        {
+            await using var connection = new NpgsqlConnection(fixture.AdminConnectionString);
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand("""delete from erp.invoices where "Id" = @id""", connection);
+            command.Parameters.AddWithValue("id", invoiceId);
+            await command.ExecuteNonQueryAsync();
+        }
+    }
+
+    private static (decimal Rate, string? Category, decimal Net, decimal Tax)[] TaxRows(JsonElement totals) =>
+        totals.EnumerateArray()
+            .Select(total => (
+                total.GetProperty("rate").GetDecimal(),
+                total.GetProperty("category").GetString(),
+                total.GetProperty("netAmount").GetDecimal(),
+                total.GetProperty("taxAmount").GetDecimal()))
+            .ToArray();
+
+    private static void AssertTaxTotals(JsonElement body, decimal net, decimal tax, decimal gross)
+    {
+        Assert.Equal(net, body.GetProperty("netAmount").GetDecimal());
+        Assert.Equal(tax, body.GetProperty("taxAmount").GetDecimal());
+        Assert.Equal(gross, body.GetProperty("grossAmount").GetDecimal());
+        var totals = body.GetProperty("taxTotals").EnumerateArray().ToArray();
+        Assert.Equal(2, totals.Length);
+        Assert.Equal(19m, totals[0].GetProperty("rate").GetDecimal());
+        Assert.Equal("S", totals[0].GetProperty("category").GetString());
+        Assert.Equal(1598.00m, totals[0].GetProperty("netAmount").GetDecimal());
+        Assert.Equal(303.62m, totals[0].GetProperty("taxAmount").GetDecimal());
+        Assert.Equal(7m, totals[1].GetProperty("rate").GetDecimal());
+        Assert.Equal("S", totals[1].GetProperty("category").GetString());
+        Assert.Equal(38.97m, totals[1].GetProperty("netAmount").GetDecimal());
+        Assert.Equal(2.73m, totals[1].GetProperty("taxAmount").GetDecimal());
+    }
+
+    private static void AssertInvoiceContent(JsonElement invoice)
+    {
+        AssertTaxTotals(invoice, 1636.97m, 306.35m, 1943.32m);
+        Assert.True(invoice.GetProperty("contentComplete").GetBoolean());
+        Assert.Equal("EUR", invoice.GetProperty("currency").GetString());
+        Assert.Matches(@"^\d{4}-\d{2}-\d{2}$", invoice.GetProperty("invoiceDate").GetString());
+        Assert.Equal(invoice.GetProperty("invoiceDate").GetString(), invoice.GetProperty("deliveryDate").GetString());
+        var lines = invoice.GetProperty("lines").EnumerateArray().ToArray();
+        Assert.Equal(2, lines.Length);
+        Assert.Equal(1, lines[0].GetProperty("position").GetInt32());
+        Assert.Equal("Cityrad", lines[0].GetProperty("description").GetString());
+        Assert.Equal(19m, lines[0].GetProperty("rate").GetDecimal());
+        Assert.Equal(2, lines[1].GetProperty("position").GetInt32());
+        Assert.Equal("Schloss", lines[1].GetProperty("description").GetString());
+        Assert.Equal(7m, lines[1].GetProperty("rate").GetDecimal());
+        Assert.Equal("A Handels GmbH", invoice.GetProperty("seller").GetProperty("name").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(invoice.GetProperty("buyer").GetProperty("name").GetString()));
+    }
+
+    private static void AssertLegacy(JsonElement invoice, string number)
+    {
+        Assert.Equal(number, invoice.GetProperty("number").GetString());
+        Assert.Equal(12.50m, invoice.GetProperty("netAmount").GetDecimal());
+        Assert.False(invoice.GetProperty("contentComplete").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, invoice.GetProperty("taxAmount").ValueKind);
+        Assert.Equal(JsonValueKind.Null, invoice.GetProperty("grossAmount").ValueKind);
+        Assert.Equal(JsonValueKind.Null, invoice.GetProperty("seller").ValueKind);
+        Assert.Equal(JsonValueKind.Null, invoice.GetProperty("buyer").ValueKind);
+        Assert.Empty(invoice.GetProperty("lines").EnumerateArray());
+        Assert.Empty(invoice.GetProperty("taxTotals").EnumerateArray());
+    }
+
+    private async Task ProcessUntilAsync(Guid messageId)
+    {
+        for (var attempt = 0; attempt < 8 && !await fixture.Probe.OutboxProcessedAsync(fixture.TenantA, messageId); attempt++)
+        {
+            await OutboxProcessor.ProcessOnceAsync(fixture.WorkerConnectionString);
+        }
     }
 
     private async Task<(Guid Id, string Number)> CreateDraftOrderAsync(ApiSession api, string label)

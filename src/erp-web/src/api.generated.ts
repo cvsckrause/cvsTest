@@ -1249,16 +1249,65 @@ export interface components {
             salesOrderId: string;
             shipTo: components["schemas"]["AddressSnapshot"];
         };
+        InvoiceBuyerResponse: {
+            additionalLine: null | string;
+            city: null | string;
+            countryCode: null | string;
+            name: null | string;
+            number: null | string;
+            postalCode: null | string;
+            street: null | string;
+        };
+        InvoiceLineResponse: {
+            category: string;
+            description: string;
+            /** Format: double */
+            netAmount: number | string;
+            /** Format: int32 */
+            position: number | string;
+            /** Format: double */
+            quantity: number | string;
+            /** Format: double */
+            rate: number | string;
+            sku: string;
+            taxCode: string;
+            /** Format: double */
+            unitPrice: number | string;
+        };
         InvoiceResponse: {
+            buyer: null | components["schemas"]["InvoiceBuyerResponse"];
+            contentComplete: boolean;
             /** Format: date-time */
             createdAt: string;
+            currency: string;
+            /** Format: date */
+            deliveryDate: null | string;
+            /** Format: double */
+            grossAmount: null | number | string;
             /** Format: uuid */
             id: string;
+            /** Format: date */
+            invoiceDate: null | string;
+            lines: components["schemas"]["InvoiceLineResponse"][];
             /** Format: double */
             netAmount: number | string;
             number: string;
             /** Format: uuid */
             salesOrderId: string;
+            seller: null | components["schemas"]["InvoiceSellerResponse"];
+            /** Format: double */
+            taxAmount: null | number | string;
+            taxTotals: components["schemas"]["TaxTotalResponse"][];
+        };
+        InvoiceSellerResponse: {
+            additionalLine: null | string;
+            city: null | string;
+            countryCode: null | string;
+            name: string;
+            postalCode: null | string;
+            steuernummer: null | string;
+            street: null | string;
+            ustIdNr: null | string;
         };
         LinkCustomerAddressRequest: {
             /** Format: uuid */
@@ -1306,6 +1355,8 @@ export interface components {
             billTo: components["schemas"]["BillToSnapshot"];
             /** Format: uuid */
             customerId: string;
+            /** Format: double */
+            grossAmount: number | string;
             /** Format: uuid */
             id: string;
             lines: components["schemas"]["SalesOrderLineResponse"][];
@@ -1316,6 +1367,9 @@ export interface components {
             /** Format: uuid */
             shipToAddressId: string;
             status: string;
+            /** Format: double */
+            taxAmount: number | string;
+            taxTotals: components["schemas"]["TaxTotalResponse"][];
             warehouseCode: string;
         };
         SalesOrderSummaryResponse: {
@@ -1393,6 +1447,15 @@ export interface components {
             reserved: number | string;
             sku: string;
             warehouseCode: string;
+        };
+        TaxTotalResponse: {
+            category: string;
+            /** Format: double */
+            netAmount: number | string;
+            /** Format: double */
+            rate: number | string;
+            /** Format: double */
+            taxAmount: number | string;
         };
         UpdateAddressRequest: {
             additionalLine: null | string;

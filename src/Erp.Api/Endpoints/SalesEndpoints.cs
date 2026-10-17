@@ -210,6 +210,8 @@ internal static class SalesEndpoints
             }
 
             var invoices = await db.Invoices.AsNoTracking()
+                .Include(invoice => invoice.Lines)
+                .Include(invoice => invoice.TaxTotals)
                 .Where(invoice => invoice.SalesOrderId == id)
                 .OrderBy(invoice => invoice.CreatedAt)
                 .ThenBy(invoice => invoice.Id)
@@ -220,6 +222,8 @@ internal static class SalesEndpoints
         api.MapGet("/invoices/{id:guid}", async (Guid id, ErpDbContext db, CancellationToken cancellationToken) =>
         {
             var invoice = await db.Invoices.AsNoTracking()
+                .Include(item => item.Lines)
+                .Include(item => item.TaxTotals)
                 .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
             return invoice is null ? Results.NotFound() : Results.Ok(ToInvoiceResponse(invoice));
         }).Produces<InvoiceResponse>().Produces(StatusCodes.Status404NotFound);
@@ -415,8 +419,15 @@ internal static class SalesEndpoints
         return api;
     }
 
-    private static SalesOrderResponse ToResponse(SalesOrder order) =>
-        new(
+    private static SalesOrderResponse ToResponse(SalesOrder order)
+    {
+        var taxTotals = TaxRates.Summarize(
+                order.Lines.Select(line => new TaxableAmount(line.TaxCode, line.NetAmount)).ToArray(),
+                intraEuSupply: false)
+            .Select(total => new TaxTotalResponse(total.Rate, total.Category, total.NetAmount, total.TaxAmount))
+            .ToArray();
+        var taxAmount = taxTotals.Sum(total => total.TaxAmount);
+        return new SalesOrderResponse(
             order.Id,
             order.OrderNumber,
             order.CustomerId,
@@ -426,6 +437,9 @@ internal static class SalesEndpoints
             order.Status.ToString(),
             order.WarehouseCode,
             order.NetAmount,
+            taxTotals,
+            taxAmount,
+            order.NetAmount + taxAmount,
             order.Lines.Select(line => new SalesOrderLineResponse(
                 line.ArticleId,
                 line.Sku,
@@ -434,6 +448,7 @@ internal static class SalesEndpoints
                 line.Quantity,
                 line.UnitPrice,
                 line.NetAmount)).ToArray());
+    }
 
     private static DeliveryResponse ToDeliveryResponse(Delivery delivery) =>
         new(
@@ -450,7 +465,53 @@ internal static class SalesEndpoints
             delivery.CreatedAt);
 
     private static InvoiceResponse ToInvoiceResponse(Invoice invoice) =>
-        new(invoice.Id, invoice.SalesOrderId, invoice.Number, invoice.NetAmount, invoice.CreatedAt);
+        new(
+            invoice.Id,
+            invoice.SalesOrderId,
+            invoice.Number,
+            invoice.NetAmount,
+            invoice.TaxAmount,
+            invoice.GrossAmount,
+            "EUR",
+            invoice.ContentComplete,
+            invoice.InvoiceDate,
+            invoice.DeliveryDate,
+            invoice.SellerName is null
+                ? null
+                : new InvoiceSellerResponse(
+                    invoice.SellerName,
+                    invoice.SellerStreet,
+                    invoice.SellerPostalCode,
+                    invoice.SellerCity,
+                    invoice.SellerCountryCode,
+                    invoice.SellerAdditionalLine,
+                    invoice.SellerSteuernummer,
+                    invoice.SellerUstIdNr),
+            invoice.BuyerName is null
+                ? null
+                : new InvoiceBuyerResponse(
+                    invoice.BuyerName,
+                    invoice.BuyerNumber,
+                    invoice.BuyerStreet,
+                    invoice.BuyerPostalCode,
+                    invoice.BuyerCity,
+                    invoice.BuyerCountryCode,
+                    invoice.BuyerAdditionalLine),
+            invoice.Lines.Select(line => new InvoiceLineResponse(
+                line.Position,
+                line.Sku,
+                line.Description,
+                line.Quantity,
+                line.UnitPrice,
+                line.NetAmount,
+                line.Rate,
+                line.Category,
+                line.TaxCode.ToString())).ToArray(),
+            invoice.TaxTotals.Select(ToTaxTotal).ToArray(),
+            invoice.CreatedAt);
+
+    private static TaxTotalResponse ToTaxTotal(InvoiceTaxTotal total) =>
+        new(total.Rate, total.Category, total.NetAmount, total.TaxAmount);
 
     private static bool TryParseOrderCursor(string after, out DateTimeOffset createdAt, out Guid id)
     {
@@ -492,6 +553,9 @@ public sealed record SalesOrderResponse(
     string Status,
     string WarehouseCode,
     decimal NetAmount,
+    IReadOnlyList<TaxTotalResponse> TaxTotals,
+    decimal TaxAmount,
+    decimal GrossAmount,
     IReadOnlyCollection<SalesOrderLineResponse> Lines);
 public sealed record SalesOrderLineResponse(
     Guid ArticleId,
@@ -509,9 +573,47 @@ public sealed record DeliveryResponse(
     string Number,
     AddressSnapshot ShipTo,
     DateTimeOffset CreatedAt);
+public sealed record TaxTotalResponse(decimal Rate, string Category, decimal NetAmount, decimal TaxAmount);
+public sealed record InvoiceSellerResponse(
+    string Name,
+    string? Street,
+    string? PostalCode,
+    string? City,
+    string? CountryCode,
+    string? AdditionalLine,
+    string? Steuernummer,
+    string? UstIdNr);
+public sealed record InvoiceBuyerResponse(
+    string? Name,
+    string? Number,
+    string? Street,
+    string? PostalCode,
+    string? City,
+    string? CountryCode,
+    string? AdditionalLine);
+public sealed record InvoiceLineResponse(
+    int Position,
+    string Sku,
+    string Description,
+    decimal Quantity,
+    decimal UnitPrice,
+    decimal NetAmount,
+    decimal Rate,
+    string Category,
+    string TaxCode);
 public sealed record InvoiceResponse(
     Guid Id,
     Guid SalesOrderId,
     string Number,
     decimal NetAmount,
+    decimal? TaxAmount,
+    decimal? GrossAmount,
+    string Currency,
+    bool ContentComplete,
+    DateOnly? InvoiceDate,
+    DateOnly? DeliveryDate,
+    InvoiceSellerResponse? Seller,
+    InvoiceBuyerResponse? Buyer,
+    IReadOnlyList<InvoiceLineResponse> Lines,
+    IReadOnlyList<TaxTotalResponse> TaxTotals,
     DateTimeOffset CreatedAt);

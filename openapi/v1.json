@@ -443,15 +443,184 @@
         ],
         "type": "object"
       },
+      "InvoiceBuyerResponse": {
+        "properties": {
+          "additionalLine": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "city": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "countryCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "number": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "postalCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "street": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "number",
+          "street",
+          "postalCode",
+          "city",
+          "countryCode",
+          "additionalLine"
+        ],
+        "type": "object"
+      },
+      "InvoiceLineResponse": {
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "netAmount": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "position": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "quantity": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "rate": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "sku": {
+            "type": "string"
+          },
+          "taxCode": {
+            "type": "string"
+          },
+          "unitPrice": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "position",
+          "sku",
+          "description",
+          "quantity",
+          "unitPrice",
+          "netAmount",
+          "rate",
+          "category",
+          "taxCode"
+        ],
+        "type": "object"
+      },
       "InvoiceResponse": {
         "properties": {
+          "buyer": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/InvoiceBuyerResponse"
+              }
+            ]
+          },
+          "contentComplete": {
+            "type": "boolean"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
           },
+          "currency": {
+            "type": "string"
+          },
+          "deliveryDate": {
+            "format": "date",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "grossAmount": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
           "id": {
             "format": "uuid",
             "type": "string"
+          },
+          "invoiceDate": {
+            "format": "date",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/InvoiceLineResponse"
+            },
+            "type": "array"
           },
           "netAmount": {
             "format": "double",
@@ -467,6 +636,31 @@
           "salesOrderId": {
             "format": "uuid",
             "type": "string"
+          },
+          "seller": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/InvoiceSellerResponse"
+              }
+            ]
+          },
+          "taxAmount": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "taxTotals": {
+            "items": {
+              "$ref": "#/components/schemas/TaxTotalResponse"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -474,7 +668,77 @@
           "salesOrderId",
           "number",
           "netAmount",
+          "taxAmount",
+          "grossAmount",
+          "currency",
+          "contentComplete",
+          "invoiceDate",
+          "deliveryDate",
+          "seller",
+          "buyer",
+          "lines",
+          "taxTotals",
           "createdAt"
+        ],
+        "type": "object"
+      },
+      "InvoiceSellerResponse": {
+        "properties": {
+          "additionalLine": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "city": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "countryCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "postalCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "steuernummer": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "street": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "ustIdNr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "street",
+          "postalCode",
+          "city",
+          "countryCode",
+          "additionalLine",
+          "steuernummer",
+          "ustIdNr"
         ],
         "type": "object"
       },
@@ -653,6 +917,14 @@
             "format": "uuid",
             "type": "string"
           },
+          "grossAmount": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
           "id": {
             "format": "uuid",
             "type": "string"
@@ -684,6 +956,20 @@
           "status": {
             "type": "string"
           },
+          "taxAmount": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "taxTotals": {
+            "items": {
+              "$ref": "#/components/schemas/TaxTotalResponse"
+            },
+            "type": "array"
+          },
           "warehouseCode": {
             "type": "string"
           }
@@ -698,6 +984,9 @@
           "status",
           "warehouseCode",
           "netAmount",
+          "taxTotals",
+          "taxAmount",
+          "grossAmount",
           "lines"
         ],
         "type": "object"
@@ -1006,6 +1295,44 @@
           "onHand",
           "reserved",
           "available"
+        ],
+        "type": "object"
+      },
+      "TaxTotalResponse": {
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "netAmount": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "rate": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "taxAmount": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "rate",
+          "category",
+          "netAmount",
+          "taxAmount"
         ],
         "type": "object"
       },

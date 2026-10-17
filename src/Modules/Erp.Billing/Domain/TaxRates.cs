@@ -18,14 +18,21 @@ public sealed record InvoiceLineInput(
     decimal UnitPrice,
     TaxCode TaxCode);
 
+public readonly record struct TaxableAmount(TaxCode TaxCode, decimal NetAmount);
+
 public static class TaxRates
 {
     public static IReadOnlyList<InvoiceTaxTotalDraft> Summarize(
-        IReadOnlyList<InvoiceLineDraft> lines,
+        IReadOnlyList<TaxableAmount> lines,
         bool intraEuSupply)
     {
         return lines
-            .GroupBy(line => intraEuSupply ? (Rate: 0m, Category: "K") : (line.Rate, line.Category))
+            .Select(line =>
+            {
+                var rated = For(line.TaxCode, intraEuSupply);
+                return (rated.Rate, rated.Category, line.NetAmount);
+            })
+            .GroupBy(line => (line.Rate, line.Category))
             .Select(group =>
             {
                 var net = group.Sum(line => line.NetAmount);

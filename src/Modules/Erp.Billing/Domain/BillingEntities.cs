@@ -116,7 +116,9 @@ public sealed class Invoice : ITenantEntity
             invoice._lines.Add(InvoiceLine.From(invoice, draft));
         }
 
-        foreach (var total in TaxRates.Summarize(drafts, intraEuSupply))
+        foreach (var total in TaxRates.Summarize(
+            drafts.Select(line => new TaxableAmount(line.TaxCode, line.NetAmount)).ToArray(),
+            intraEuSupply))
         {
             invoice._taxTotals.Add(InvoiceTaxTotal.From(invoice, total));
         }
