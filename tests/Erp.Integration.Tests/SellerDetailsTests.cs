@@ -78,7 +78,7 @@ public sealed class SellerDetailsTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task Tenant_without_a_Mandant_row_gets_404_and_can_still_release()
+    public async Task Tenant_without_a_Mandant_row_gets_404_and_cannot_release()
     {
         await GrantMembershipWithoutMandantAsync();
         using var api = fixture.OpenSession(UserWithoutMandant, TenantWithoutMandant);
@@ -107,7 +107,11 @@ public sealed class SellerDetailsTests(PostgresFixture fixture)
 
         var release = await api.PostAsync($"/api/v1/sales-orders/{order.Id}/release", new { }, $"nm-{suffix}-release");
 
-        Assert.Equal(HttpStatusCode.OK, release.Status);
+        Assert.Equal(HttpStatusCode.Conflict, release.Status);
+        using var body = JsonDocument.Parse(release.Body);
+        Assert.Equal(
+            Mandant.SellerFields,
+            body.RootElement.GetProperty("missingSellerFields").EnumerateArray().Select(item => item.GetString()));
     }
 
     private static object Seller(string? steuernummer, string? ustIdNr, string countryCode = "DE", string street = "Alsterweg 1") =>

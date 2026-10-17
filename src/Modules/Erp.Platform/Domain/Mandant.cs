@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Erp.BuildingBlocks;
 
 namespace Erp.Platform.Domain;
 
@@ -126,6 +127,9 @@ public sealed partial class Mandant
         UstIdNr = nextUstIdNr;
     }
 
+    public static IReadOnlyList<string> SellerFields { get; } =
+        ["street", "postalCode", "city", "countryCode", "steuernummerOrUstIdNr"];
+
     public IReadOnlyList<string> MissingSellerFields()
     {
         var missing = new List<string>();
@@ -135,6 +139,20 @@ public sealed partial class Mandant
         if (string.IsNullOrWhiteSpace(SellerCountryCode)) missing.Add("countryCode");
         if (string.IsNullOrWhiteSpace(Steuernummer) && string.IsNullOrWhiteSpace(UstIdNr)) missing.Add("steuernummerOrUstIdNr");
         return missing;
+    }
+
+    public SellerSnapshot ToSellerSnapshot()
+    {
+        if (MissingSellerFields().Count > 0) throw new InvalidOperationException("Seller details are incomplete.");
+        return new SellerSnapshot(
+            Firmenname,
+            SellerStreet!,
+            SellerPostalCode!,
+            SellerCity!,
+            SellerCountryCode!,
+            SellerAdditionalLine,
+            Steuernummer,
+            UstIdNr);
     }
 
     private static string? NormalizeUstIdNr(string? value, string parameter)

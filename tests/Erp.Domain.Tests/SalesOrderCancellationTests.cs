@@ -14,10 +14,12 @@ public sealed class SalesOrderCancellationTests
     private static AddressSnapshot SampleShipTo =>
         new("Nordrad GmbH", "Hafenstraße 12", "20095", "Hamburg", "DE", null);
 
+    private static BillToSnapshot SampleBillTo => new("Nordrad GmbH", "10000", null, SampleShipTo);
+
     [Fact]
     public void Cancelling_a_released_order_keeps_lines_and_rejects_a_second_cancel()
     {
-        var order = SalesOrder.Create(TenantId, CustomerId, "SO-20001", ShipToAddressId, SampleShipTo);
+        var order = SalesOrder.Create(TenantId, CustomerId, "SO-20001", ShipToAddressId, SampleShipTo, SampleBillTo);
         order.AddLine(ArticleId, "BIKE-001", "Cityrad", TaxCode.Standard19, 2, 10m);
         order.Release();
 
@@ -33,7 +35,7 @@ public sealed class SalesOrderCancellationTests
     [Fact]
     public void Cancelling_a_draft_leaves_released_at_unset()
     {
-        var order = SalesOrder.Create(TenantId, CustomerId, "SO-20002", ShipToAddressId, SampleShipTo);
+        var order = SalesOrder.Create(TenantId, CustomerId, "SO-20002", ShipToAddressId, SampleShipTo, SampleBillTo);
         order.AddLine(ArticleId, "BIKE-001", "Cityrad", TaxCode.Standard19, 1, 10m);
 
         order.Cancel();
@@ -45,7 +47,7 @@ public sealed class SalesOrderCancellationTests
     [Fact]
     public void Releasing_a_cancelled_order_is_rejected()
     {
-        var order = SalesOrder.Create(TenantId, CustomerId, "SO-20003", ShipToAddressId, SampleShipTo);
+        var order = SalesOrder.Create(TenantId, CustomerId, "SO-20003", ShipToAddressId, SampleShipTo, SampleBillTo);
         order.AddLine(ArticleId, "BIKE-001", "Cityrad", TaxCode.Standard19, 1, 10m);
         order.Cancel();
 
@@ -55,8 +57,8 @@ public sealed class SalesOrderCancellationTests
     [Fact]
     public void Blank_warehouse_defaults_to_main_and_codes_are_normalized()
     {
-        var blank = SalesOrder.Create(TenantId, CustomerId, "SO-20004", ShipToAddressId, SampleShipTo, " ");
-        var named = SalesOrder.Create(TenantId, CustomerId, "SO-20005", ShipToAddressId, SampleShipTo, " neben ");
+        var blank = SalesOrder.Create(TenantId, CustomerId, "SO-20004", ShipToAddressId, SampleShipTo, SampleBillTo, " ");
+        var named = SalesOrder.Create(TenantId, CustomerId, "SO-20005", ShipToAddressId, SampleShipTo, SampleBillTo, " neben ");
 
         Assert.Equal("MAIN", blank.WarehouseCode);
         Assert.Equal("NEBEN", named.WarehouseCode);

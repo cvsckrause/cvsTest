@@ -1,3 +1,4 @@
+using Erp.BuildingBlocks;
 using Erp.Platform.Domain;
 
 namespace Erp.Domain.Tests;
@@ -79,6 +80,20 @@ public sealed class MandantTests
         Assert.Equal(
             ["street", "postalCode", "city", "countryCode", "steuernummerOrUstIdNr"],
             mandant.MissingSellerFields());
+        Assert.Equal(Mandant.SellerFields, mandant.MissingSellerFields());
+    }
+
+    [Fact]
+    public void Seller_snapshot_needs_complete_details_and_carries_the_Firmenname()
+    {
+        var mandant = Mandant.Seed(Tenant, 100, "Northstar Demo GmbH", DateTimeOffset.UnixEpoch);
+        Assert.Throws<InvalidOperationException>(() => mandant.ToSellerSnapshot());
+
+        mandant.ChangeSellerDetails("Hafenstraße 1", "20095", "Hamburg", "DE", "Haus B", null, "DE123456789");
+
+        Assert.Equal(
+            new SellerSnapshot("Northstar Demo GmbH", "Hafenstraße 1", "20095", "Hamburg", "DE", "Haus B", null, "DE123456789"),
+            mandant.ToSellerSnapshot());
     }
 
     [Fact]

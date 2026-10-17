@@ -154,7 +154,7 @@ function Workspace({
     setBusy,
     navigate,
     salesCustomerId: sales.selectedCustomerId,
-    reloadShippingLinks: sales.reloadShippingLinks,
+    reloadAddressLinks: sales.reloadAddressLinks,
     openSales,
   })
   const lager = useLagerWorkspace({

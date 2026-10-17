@@ -125,8 +125,17 @@ public sealed class ErpDbContext(
             entity.Property(x => x.ShipToCity).HasMaxLength(120);
             entity.Property(x => x.ShipToCountryCode).HasMaxLength(2);
             entity.Property(x => x.ShipToAdditionalLine).HasMaxLength(240);
+            entity.Property(x => x.BuyerName).HasMaxLength(240);
+            entity.Property(x => x.BuyerNumber).HasMaxLength(40);
+            entity.Property(x => x.BillToName).HasMaxLength(240);
+            entity.Property(x => x.BillToStreet).HasMaxLength(240);
+            entity.Property(x => x.BillToPostalCode).HasMaxLength(20);
+            entity.Property(x => x.BillToCity).HasMaxLength(120);
+            entity.Property(x => x.BillToCountryCode).HasMaxLength(2);
+            entity.Property(x => x.BillToAdditionalLine).HasMaxLength(240);
             entity.Ignore(x => x.NetAmount);
             entity.Ignore(x => x.ShipToSnapshot);
+            entity.Ignore(x => x.BillTo);
             entity.HasIndex(x => new { x.TenantId, x.OrderNumber }).IsUnique();
             entity.HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.SalesOrderId);
             entity.Navigation(x => x.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);

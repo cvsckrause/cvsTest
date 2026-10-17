@@ -14,6 +14,14 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
     customers,
     articles,
     shippingLinks,
+    billingLinks,
+    needsBillToChoice,
+    selectedBillToId,
+    billToMissing,
+    chooseBillTo,
+    chooseCustomer,
+    sellerIncomplete,
+    showFirma,
     lines,
     setLines,
     netAmount,
@@ -22,10 +30,8 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
     selectedShipToId,
     quantity,
     setQuantity,
-    setCustomerId,
     setArticleId,
     setShipToAddressId,
-    setShippingLinks,
     addLine,
     goTo,
     saveOrder,
@@ -144,11 +150,7 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
               Kunde
               <select
                 value={selectedCustomerId}
-                onChange={(event) => {
-                  setCustomerId(event.target.value)
-                  setShippingLinks([])
-                  setShipToAddressId('')
-                }}
+                onChange={(event) => chooseCustomer(event.target.value)}
                 disabled={Boolean(order)}
               >
                 <option value="">Kunde wählen</option>
@@ -168,6 +170,32 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
                 ))}
               </select>
             </label>
+            {order ? (
+              <div className="bill-to-field">
+                <span className="field-label">Rechnungsadresse</span>
+                <p className="bill-to-readonly">
+                  {order.billTo.buyerName} · {order.billTo.address.street}, {order.billTo.address.postalCode} {order.billTo.address.city}
+                </p>
+              </div>
+            ) : needsBillToChoice && (
+              <label className="bill-to-field">
+                Rechnungsadresse
+                <select
+                  value={selectedBillToId}
+                  onChange={(event) => chooseBillTo(event.target.value)}
+                  aria-invalid={billToMissing}
+                  aria-describedby={billToMissing ? 'bill-to-missing' : undefined}
+                >
+                  <option value="">Rechnungsadresse wählen</option>
+                  {billingLinks.map((link) => (
+                    <option key={link.id} value={link.addressId}>
+                      {link.address.name} · {link.address.street}, {link.address.postalCode} {link.address.city}
+                    </option>
+                  ))}
+                </select>
+                {billToMissing && <span id="bill-to-missing" className="field-warning">Bitte eine Rechnungsadresse wählen.</span>}
+              </label>
+            )}
           </div>
 
           <div className="section-title">
@@ -234,6 +262,12 @@ export function SalesWorkspace({ model }: { model: SalesModel }) {
           )}
           <div className="summary-actions">
             <p className="action-hint">{notice}</p>
+            {sellerIncomplete && (
+              <div className="seller-warning" role="alert">
+                <p>Ohne vollständige Firmendaten kann keine Rechnung erstellt werden.</p>
+                <button className="secondary" type="button" onClick={showFirma}>Firmendaten ergänzen</button>
+              </div>
+            )}
             {step === 'capture' && !order && <button className="primary" onClick={saveOrder} disabled={busy}>{busy ? 'Speichert …' : 'Auftrag speichern'}</button>}
             {(step === 'release' || (order && order.status !== 'Released')) && order?.status !== 'Released' && order?.status !== 'Cancelled' && (
               <button className="primary" onClick={releaseOrder} disabled={busy || !order}>

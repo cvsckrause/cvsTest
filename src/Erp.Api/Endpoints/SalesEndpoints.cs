@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Erp.Billing.Domain;
 using Erp.BuildingBlocks;
+using Erp.MasterData.Domain;
 using Erp.Persistence;
 using Erp.Platform.Domain;
 using Erp.Sales.Domain;
@@ -98,7 +99,9 @@ internal static class SalesEndpoints
                 return Results.Ok(new { id = existing.ResourceId, replayed = true });
             }
 
-            if (!await db.Customers.AnyAsync(customer => customer.Id == request.CustomerId, cancellationToken))
+            var customer = await db.Customers.AsNoTracking()
+                .SingleOrDefaultAsync(item => item.Id == request.CustomerId, cancellationToken);
+            if (customer is null)
             {
                 return Results.BadRequest(new { error = "Customer does not exist." });
             }
@@ -116,6 +119,29 @@ internal static class SalesEndpoints
             if (shipToAddress is null)
             {
                 return Results.BadRequest(new { error = "Ship-to address does not exist." });
+            }
+
+            var billingAddressIds = await db.CustomerAddresses.AsNoTracking()
+                .Where(link => link.CustomerId == request.CustomerId && link.Role == AddressRole.Billing)
+                .Select(link => link.AddressId)
+                .ToListAsync(cancellationToken);
+            if (request.BillToAddressId is { } chosenBillTo && !billingAddressIds.Contains(chosenBillTo))
+            {
+                return Results.BadRequest(new { error = "Bill-to address must be linked to the customer as Billing." });
+            }
+
+            if (request.BillToAddressId is null && billingAddressIds.Count > 1)
+            {
+                return Results.BadRequest(new { error = "The customer has several billing addresses. Choose one as billToAddressId." });
+            }
+
+            var billToAddressId = request.BillToAddressId ?? (billingAddressIds is [var onlyBilling] ? onlyBilling : null);
+            var billToAddress = billToAddressId is { } billToId && billToId != shipToAddress.Id
+                ? await db.Addresses.AsNoTracking().SingleOrDefaultAsync(address => address.Id == billToId, cancellationToken)
+                : shipToAddress;
+            if (billToAddress is null)
+            {
+                return Results.BadRequest(new { error = "Bill-to address does not exist." });
             }
 
             var articleIds = request.Lines.Select(line => line.ArticleId).Distinct().ToArray();
@@ -139,6 +165,7 @@ internal static class SalesEndpoints
                 orderNumber,
                 request.ShipToAddressId,
                 shipToAddress.ToSnapshot(),
+                new BillToSnapshot(customer.Name, customer.Number, billToAddressId, billToAddress.ToSnapshot()),
                 request.WarehouseCode ?? "MAIN");
             foreach (var line in request.Lines)
             {
@@ -234,6 +261,18 @@ internal static class SalesEndpoints
                         : "Released orders cannot be changed.");
             }
 
+            var mandant = await db.Mandanten.AsNoTracking()
+                .SingleOrDefaultAsync(item => item.Id == tenant.TenantId, cancellationToken);
+            var missingSellerFields = mandant?.MissingSellerFields() ?? Mandant.SellerFields;
+            if (mandant is null || missingSellerFields.Count > 0)
+            {
+                return Results.Conflict(new ReleaseConflictResponse(
+                    "Seller details are incomplete. Complete them under Stammdaten > Firma before releasing orders.",
+                    missingSellerFields));
+            }
+
+            var seller = mandant.ToSellerSnapshot();
+
             foreach (var line in order.Lines)
             {
                 var stock = await db.StockBalances.SingleOrDefaultAsync(
@@ -241,7 +280,7 @@ internal static class SalesEndpoints
                     cancellationToken);
                 if (stock is null || stock.Available < line.Quantity)
                 {
-                    return Results.Conflict(new { error = $"Insufficient stock for article {line.Sku}." });
+                    return Results.Conflict(new ReleaseConflictResponse($"Insufficient stock for article {line.Sku}.", []));
                 }
                 stock.Reserve(line.Quantity);
             }
@@ -258,6 +297,7 @@ internal static class SalesEndpoints
                 salesOrderNumber = released.SalesOrderNumber,
                 netAmount = released.NetAmount,
                 shipTo = released.ShipTo,
+                seller,
                 lines = released.Lines
             });
 
@@ -282,7 +322,7 @@ internal static class SalesEndpoints
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return Results.Ok(ToResponse(order));
-        }).Produces<SalesOrderResponse>();
+        }).Produces<SalesOrderResponse>().Produces<ReleaseConflictResponse>(StatusCodes.Status409Conflict);
 
         api.MapPost("/sales-orders/{id:guid}/cancel", async (
             Guid id,
@@ -382,6 +422,7 @@ internal static class SalesEndpoints
             order.CustomerId,
             order.ShipToAddressId,
             order.ShipToSnapshot,
+            order.BillTo,
             order.Status.ToString(),
             order.WarehouseCode,
             order.NetAmount,
@@ -431,7 +472,8 @@ public sealed record CreateSalesOrderRequest(
     Guid ShipToAddressId,
     string? OrderNumber,
     IReadOnlyCollection<CreateSalesOrderLineRequest> Lines,
-    string? WarehouseCode = null);
+    string? WarehouseCode = null,
+    Guid? BillToAddressId = null);
 public sealed record CreateSalesOrderLineRequest(Guid ArticleId, decimal Quantity);
 public sealed record SalesOrderSummaryResponse(
     Guid Id,
@@ -446,6 +488,7 @@ public sealed record SalesOrderResponse(
     Guid CustomerId,
     Guid ShipToAddressId,
     AddressSnapshot ShipTo,
+    BillToSnapshot BillTo,
     string Status,
     string WarehouseCode,
     decimal NetAmount,
@@ -458,6 +501,8 @@ public sealed record SalesOrderLineResponse(
     decimal Quantity,
     decimal UnitPrice,
     decimal NetAmount);
+// MissingSellerFields is empty unless the release was refused for incomplete seller details.
+public sealed record ReleaseConflictResponse(string Error, IReadOnlyList<string> MissingSellerFields);
 public sealed record DeliveryResponse(
     Guid Id,
     Guid SalesOrderId,

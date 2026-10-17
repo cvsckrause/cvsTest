@@ -23,18 +23,19 @@ public sealed class SalesOrder : ITenantEntity
         string orderNumber,
         Guid shipToAddressId,
         AddressSnapshot shipTo,
+        BillToSnapshot billTo,
         string warehouseCode)
     {
         if (tenantId == Guid.Empty) throw new ArgumentException("Tenant is required.", nameof(tenantId));
         if (customerId == Guid.Empty) throw new ArgumentException("Customer is required.", nameof(customerId));
         if (shipToAddressId == Guid.Empty) throw new ArgumentException("Ship-to address is required.", nameof(shipToAddressId));
         if (string.IsNullOrWhiteSpace(orderNumber)) throw new ArgumentException("Order number is required.", nameof(orderNumber));
-        ArgumentNullException.ThrowIfNull(shipTo);
-        if (string.IsNullOrWhiteSpace(shipTo.Name)) throw new ArgumentException("Ship-to name is required.", nameof(shipTo));
-        if (string.IsNullOrWhiteSpace(shipTo.Street)) throw new ArgumentException("Ship-to street is required.", nameof(shipTo));
-        if (string.IsNullOrWhiteSpace(shipTo.PostalCode)) throw new ArgumentException("Ship-to postal code is required.", nameof(shipTo));
-        if (string.IsNullOrWhiteSpace(shipTo.City)) throw new ArgumentException("Ship-to city is required.", nameof(shipTo));
-        if (string.IsNullOrWhiteSpace(shipTo.CountryCode)) throw new ArgumentException("Ship-to country is required.", nameof(shipTo));
+        RequireAddress(shipTo, "Ship-to", nameof(shipTo));
+        ArgumentNullException.ThrowIfNull(billTo);
+        if (string.IsNullOrWhiteSpace(billTo.BuyerName)) throw new ArgumentException("Buyer name is required.", nameof(billTo));
+        if (string.IsNullOrWhiteSpace(billTo.BuyerNumber)) throw new ArgumentException("Buyer number is required.", nameof(billTo));
+        if (billTo.AddressId == Guid.Empty) throw new ArgumentException("Bill-to address id must not be empty.", nameof(billTo));
+        RequireAddress(billTo.Address, "Bill-to", nameof(billTo));
 
         Id = Guid.NewGuid();
         TenantId = tenantId;
@@ -47,6 +48,15 @@ public sealed class SalesOrder : ITenantEntity
         ShipToCity = shipTo.City;
         ShipToCountryCode = shipTo.CountryCode;
         ShipToAdditionalLine = shipTo.AdditionalLine;
+        BuyerName = billTo.BuyerName.Trim();
+        BuyerNumber = billTo.BuyerNumber.Trim();
+        BillToAddressId = billTo.AddressId;
+        BillToName = billTo.Address.Name;
+        BillToStreet = billTo.Address.Street;
+        BillToPostalCode = billTo.Address.PostalCode;
+        BillToCity = billTo.Address.City;
+        BillToCountryCode = billTo.Address.CountryCode;
+        BillToAdditionalLine = billTo.Address.AdditionalLine;
         WarehouseCode = NormalizeWarehouse(warehouseCode);
         CreatedAt = DateTimeOffset.UtcNow;
     }
@@ -61,6 +71,16 @@ public sealed class SalesOrder : ITenantEntity
     public string ShipToCity { get; private set; } = string.Empty;
     public string ShipToCountryCode { get; private set; } = string.Empty;
     public string? ShipToAdditionalLine { get; private set; }
+    public string BuyerName { get; private set; } = string.Empty;
+    public string BuyerNumber { get; private set; } = string.Empty;
+    // Null when the customer had no Billing address and the ship-to address was used.
+    public Guid? BillToAddressId { get; private set; }
+    public string BillToName { get; private set; } = string.Empty;
+    public string BillToStreet { get; private set; } = string.Empty;
+    public string BillToPostalCode { get; private set; } = string.Empty;
+    public string BillToCity { get; private set; } = string.Empty;
+    public string BillToCountryCode { get; private set; } = string.Empty;
+    public string? BillToAdditionalLine { get; private set; }
     public string OrderNumber { get; private set; } = string.Empty;
     public string WarehouseCode { get; private set; } = string.Empty;
     public SalesOrderStatus Status { get; private set; }
@@ -73,14 +93,22 @@ public sealed class SalesOrder : ITenantEntity
     public AddressSnapshot ShipToSnapshot =>
         new(ShipToName, ShipToStreet, ShipToPostalCode, ShipToCity, ShipToCountryCode, ShipToAdditionalLine);
 
+    public BillToSnapshot BillTo =>
+        new(
+            BuyerName,
+            BuyerNumber,
+            BillToAddressId,
+            new AddressSnapshot(BillToName, BillToStreet, BillToPostalCode, BillToCity, BillToCountryCode, BillToAdditionalLine));
+
     public static SalesOrder Create(
         Guid tenantId,
         Guid customerId,
         string orderNumber,
         Guid shipToAddressId,
         AddressSnapshot shipTo,
+        BillToSnapshot billTo,
         string warehouseCode = "MAIN") =>
-        new(tenantId, customerId, orderNumber, shipToAddressId, shipTo, warehouseCode);
+        new(tenantId, customerId, orderNumber, shipToAddressId, shipTo, billTo, warehouseCode);
 
     public void AddLine(Guid articleId, string sku, string description, TaxCode taxCode, decimal quantity, decimal unitPrice)
     {
@@ -137,6 +165,16 @@ public sealed class SalesOrder : ITenantEntity
         {
             throw new InvalidOperationException("Released orders cannot be changed.");
         }
+    }
+
+    private static void RequireAddress(AddressSnapshot address, string label, string parameter)
+    {
+        ArgumentNullException.ThrowIfNull(address, parameter);
+        if (string.IsNullOrWhiteSpace(address.Name)) throw new ArgumentException($"{label} name is required.", parameter);
+        if (string.IsNullOrWhiteSpace(address.Street)) throw new ArgumentException($"{label} street is required.", parameter);
+        if (string.IsNullOrWhiteSpace(address.PostalCode)) throw new ArgumentException($"{label} postal code is required.", parameter);
+        if (string.IsNullOrWhiteSpace(address.City)) throw new ArgumentException($"{label} city is required.", parameter);
+        if (string.IsNullOrWhiteSpace(address.CountryCode)) throw new ArgumentException($"{label} country is required.", parameter);
     }
 
     private static string NormalizeWarehouse(string warehouseCode)
@@ -213,6 +251,8 @@ public sealed class SalesOrderLine : ITenantEntity
         decimal unitPrice) =>
         new(salesOrderId, tenantId, position, articleId, sku, description, taxCode, quantity, unitPrice);
 }
+
+public sealed record BillToSnapshot(string BuyerName, string BuyerNumber, Guid? AddressId, AddressSnapshot Address);
 
 public sealed record ReleasedSalesOrderLine(Guid ArticleId, string Sku, decimal Quantity);
 

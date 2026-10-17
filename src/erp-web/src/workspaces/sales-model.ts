@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { erpApi } from '../api'
+import { ApiError, erpApi } from '../api'
 import type {
   Article,
   Customer,
@@ -44,6 +44,10 @@ export function useSalesWorkspace({
   const [customerId, setCustomerId] = useState('')
   const [shipToAddressId, setShipToAddressId] = useState('')
   const [shippingLinks, setShippingLinks] = useState<CustomerAddress[]>([])
+  const [billToAddressId, setBillToAddressId] = useState('')
+  const [billingLinks, setBillingLinks] = useState<CustomerAddress[]>([])
+  const [billToMissing, setBillToMissing] = useState(false)
+  const [sellerIncomplete, setSellerIncomplete] = useState(false)
   const [articleId, setArticleId] = useState('')
   const [quantity, setQuantity] = useState(1)
   const [orderNumber, setOrderNumber] = useState(initialOrderNumber)
@@ -92,6 +96,9 @@ export function useSalesWorkspace({
   const selectedShipToId = shippingLinks.some((link) => link.addressId === shipToAddressId)
     ? shipToAddressId
     : (shippingLinks[0]?.addressId ?? '')
+  // One Billing address (or none) is resolved by the API; only a real choice is asked for.
+  const needsBillToChoice = billingLinks.length > 1
+  const selectedBillToId = billingLinks.some((link) => link.addressId === billToAddressId) ? billToAddressId : ''
 
   useEffect(() => {
     if (!orderId || orderId === 'new') {
@@ -108,6 +115,9 @@ export function useSalesWorkspace({
         setStep('capture')
         setCustomerId('')
         setShipToAddressId('')
+        setBillToAddressId('')
+        setBillToMissing(false)
+        setSellerIncomplete(false)
         setOrderNumber('')
       }
       return
@@ -125,6 +135,7 @@ export function useSalesWorkspace({
         setWarehouseCode(loaded.warehouseCode)
         setCustomerId(loaded.customerId)
         setShipToAddressId(loaded.shipToAddressId)
+        setSellerIncomplete(false)
         setStep(loaded.status === 'Released' ? 'deliver' : 'capture')
         setNotice(`Auftrag ${loaded.orderNumber} geöffnet.`)
       })
@@ -227,12 +238,14 @@ export function useSalesWorkspace({
     if (!selectedCustomerId) return
 
     let cancelled = false
-    erpApi.customerAddresses(selectedCustomerId, 'Shipping')
+    erpApi.customerAddresses(selectedCustomerId)
       .then((links) => {
-        if (!cancelled) setShippingLinks(links)
+        if (cancelled) return
+        setShippingLinks(withRole(links, 'Shipping'))
+        setBillingLinks(withRole(links, 'Billing'))
       })
       .catch((error: Error) => {
-        if (!cancelled) setNotice(`Lieferadressen nicht ladbar: ${error.message}`)
+        if (!cancelled) setNotice(`Kundenadressen nicht ladbar: ${error.message}`)
       })
 
     return () => {
@@ -277,15 +290,41 @@ export function useSalesWorkspace({
     setStep(next)
   }
 
+  function chooseCustomer(id: string) {
+    setCustomerId(id)
+    setShippingLinks([])
+    setShipToAddressId('')
+    setBillingLinks([])
+    setBillToAddressId('')
+    setBillToMissing(false)
+  }
+
+  function chooseBillTo(id: string) {
+    setBillToAddressId(id)
+    setBillToMissing(false)
+  }
+
   async function saveOrder() {
     if (!selectedCustomerId || !selectedShipToId || lines.length === 0) {
       setNotice('Kunde, Lieferadresse und mindestens eine Position sind erforderlich.')
       return
     }
+    if (needsBillToChoice && !selectedBillToId) {
+      setBillToMissing(true)
+      setNotice('Der Kunde hat mehrere Rechnungsadressen. Bitte eine wählen.')
+      return
+    }
     setBusy(true)
     try {
       const warehouse = warehouseCode.trim().toUpperCase() || 'MAIN'
-      const saved = await erpApi.createOrder(selectedCustomerId, selectedShipToId, orderNumber, lines, warehouse)
+      const saved = await erpApi.createOrder(
+        selectedCustomerId,
+        selectedShipToId,
+        orderNumber,
+        lines,
+        warehouse,
+        needsBillToChoice ? selectedBillToId : null,
+      )
       loadedOrderId.current = saved.id
       setOrder(saved)
       setWarehouseCode(saved.warehouseCode)
@@ -310,11 +349,18 @@ export function useSalesWorkspace({
       const released = await erpApi.releaseOrder(order.id)
       loadedOrderId.current = released.id
       setOrder(released)
+      setSellerIncomplete(false)
       setStep('deliver')
       setNotice(`Auftrag ${released.orderNumber} freigegeben. Warte auf Lieferung und Rechnung …`)
       void refreshOrderList()
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Freigabe fehlgeschlagen.')
+      const sellerRefused = error instanceof ApiError && error.missingSellerFields.length > 0
+      setSellerIncomplete(sellerRefused)
+      if (sellerRefused) {
+        setNotice('Firmendaten unvollständig. Unter Stammdaten › Firma ergänzen, dann erneut freigeben.')
+      } else {
+        setNotice(error instanceof Error ? error.message : 'Freigabe fehlgeschlagen.')
+      }
     } finally {
       setBusy(false)
     }
@@ -362,19 +408,29 @@ export function useSalesWorkspace({
     setStep('capture')
     setCustomerId('')
     setShipToAddressId('')
+    setBillToAddressId('')
+    setBillToMissing(false)
+    setSellerIncomplete(false)
     setWarehouseCode('MAIN')
     setOrderNumber('')
     setNotice('Neuer Auftrag. Position hinzufügen, speichern, dann freigeben.')
     navigate({ workspace: 'sales', documentId: 'new' })
   }
 
-  async function reloadShippingLinks(forCustomerId: string, selectFirstIfEmpty: boolean) {
+  async function reloadAddressLinks(forCustomerId: string, selectFirstIfEmpty: boolean) {
     if (forCustomerId !== selectedCustomerId) return
-    const links = await erpApi.customerAddresses(forCustomerId, 'Shipping')
-    setShippingLinks(links)
+    const links = await erpApi.customerAddresses(forCustomerId)
+    const shipping = withRole(links, 'Shipping')
+    setShippingLinks(shipping)
+    setBillingLinks(withRole(links, 'Billing'))
     if (selectFirstIfEmpty) {
-      setShipToAddressId((current) => current || links[0]?.addressId || '')
+      setShipToAddressId((current) => current || shipping[0]?.addressId || '')
     }
+  }
+
+  function showFirma() {
+    setSellerIncomplete(false)
+    navigate({ workspace: 'stamm', tab: 'firma', documentId: null })
   }
 
   const openRoute: AppRoute = {
@@ -395,6 +451,14 @@ export function useSalesWorkspace({
     customers: customerChoices,
     articles,
     shippingLinks,
+    billingLinks,
+    needsBillToChoice,
+    selectedBillToId,
+    billToMissing,
+    chooseBillTo,
+    chooseCustomer,
+    sellerIncomplete,
+    showFirma,
     lines,
     setLines,
     netAmount,
@@ -403,17 +467,15 @@ export function useSalesWorkspace({
     selectedShipToId,
     quantity,
     setQuantity,
-    setCustomerId,
     setArticleId,
     setShipToAddressId,
-    setShippingLinks,
     addLine,
     goTo,
     saveOrder,
     releaseOrder,
     cancelOrder,
     startNewOrder,
-    reloadShippingLinks,
+    reloadAddressLinks,
     openRoute,
     showingList,
     orders,
@@ -426,6 +488,10 @@ export function useSalesWorkspace({
     invoices,
     documentsWaiting,
   }
+}
+
+function withRole(links: CustomerAddress[], role: 'Shipping' | 'Billing') {
+  return links.filter((link) => link.role === role)
 }
 
 export type SalesModel = ReturnType<typeof useSalesWorkspace>
